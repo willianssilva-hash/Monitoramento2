@@ -529,6 +529,7 @@ function renderGeneral() {
   renderScheduleCards();
   renderBarList('statusChart', countBy(STATE.filtered, (row) => row.statusBucket), { empty: 'Nenhum status encontrado para os filtros.', colorResolver: (label) => statusColorClass(label), actionResolver: (label) => ({ action: 'statusBucket', value: label }) });
   renderBarList('ufChart', topEntries(countBy(STATE.filtered, (row) => row.uf || 'Sem UF'), 12), { empty: 'Nenhuma UF encontrada para os filtros.', actionResolver: (label) => ({ action: 'uf', value: label }) });
+  renderGeneralDashboardCharts(STATE.filtered, metrics);
   renderSourcePanels(); renderInsights('generalInsights', buildGeneralInsights(STATE.filtered)); renderRecordsTable('generalTable', STATE.filtered, { limit: 300 });
 }
 
@@ -562,6 +563,94 @@ function renderScheduleCards() {
     </article>`;
   }).join('');
 }
+
+function renderGeneralDashboardCharts(rows, metrics) {
+  renderDonutDashboard('generalStatusDonut', topEntries(countBy(rows, (row) => row.statusBucket), 6).map(([label, value]) => ({
+    label, value, cls: statusColorClass(label), action: { action: 'statusBucket', value: label }
+  })), { centerValue: formatInteger(rows.length), centerLabel: 'registros' });
+
+  renderLineDashboard('generalTrendChart', buildMonthlyTrend(rows));
+
+  renderDonutDashboard('deliveryMixChart', [
+    { label: 'Finalizadas', value: metrics.delivered, cls: 'success', action: { action: 'filterStatus', value: 'delivered' } },
+    { label: 'Em trânsito', value: metrics.inTransit, cls: 'info', action: { action: 'filterStatus', value: 'transit' } },
+    { label: 'Fora do prazo', value: metrics.delayed, cls: 'danger', action: { action: 'filterStatus', value: 'delayed' } },
+    { label: 'Em aberto', value: Math.max(0, metrics.totalRecords - metrics.delivered - metrics.inTransit - metrics.delayed), cls: 'purple', action: { action: 'filterStatus', value: 'open' } }
+  ], { centerValue: `${metrics.ontimeRate}%`, centerLabel: 'ONTIME' });
+
+  renderOperationProfile(rows);
+}
+
+function renderDonutDashboard(containerId, items, options = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const total = items.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+  if (!total) { container.innerHTML = emptyState('Sem dados suficientes para o gráfico.'); return; }
+  let acc = 0;
+  const gradient = items.map((item, index) => {
+    const start = acc;
+    const end = acc + ((Number(item.value) || 0) / total) * 100;
+    acc = end;
+    return `${chartColor(item.cls || item.label, index)} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  }).join(', ');
+  const legend = items.map((item, index) => {
+    const width = Math.round(((Number(item.value) || 0) / total) * 100);
+    const action = item.action ? `data-action="${escapeHtml(item.action.action)}" data-value="${escapeHtml(item.action.value)}"` : '';
+    const summary = `<strong>${escapeHtml(item.label)}</strong><br>${formatInteger(item.value)} registro(s)<br><small>${width}% do total do gráfico</small>`;
+    return `<button type="button" class="donut-legend-item ${item.action ? 'clickable' : ''}" ${action} data-summary="${escapeHtml(summary)}"><i style="background:${chartColor(item.cls || item.label, index)}"></i><span>${escapeHtml(item.label)}</span><b>${formatInteger(item.value)}</b></button>`;
+  }).join('');
+  container.innerHTML = `<div class="donut-ring" style="--donut:${gradient}" data-summary="${escapeHtml(`<strong>${options.centerLabel || 'Total'}</strong><br>${options.centerValue || formatInteger(total)}`)}"><div><strong>${escapeHtml(options.centerValue || formatInteger(total))}</strong><span>${escapeHtml(options.centerLabel || 'Total')}</span></div></div><div class="donut-legend">${legend}</div>`;
+}
+
+function renderLineDashboard(containerId, trend) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!trend.length) { container.innerHTML = emptyState('Sem datas suficientes para evolução.'); return; }
+  const width = 640, height = 250, padX = 34, padY = 28;
+  const max = Math.max(1, ...trend.flatMap((item) => [item.total, item.delivered, item.delayed]));
+  const x = (index) => padX + (trend.length <= 1 ? 0 : (index * (width - padX * 2)) / (trend.length - 1));
+  const y = (value) => height - padY - ((value / max) * (height - padY * 2));
+  const line = (key) => trend.map((item, index) => `${x(index).toFixed(1)},${y(item[key]).toFixed(1)}`).join(' ');
+  const dots = (key, cls) => trend.map((item, index) => `<circle class="line-dot ${cls}" cx="${x(index).toFixed(1)}" cy="${y(item[key]).toFixed(1)}" r="4" data-summary="${escapeHtml(`<strong>${item.label}</strong><br>${formatInteger(item[key])} ${key === 'total' ? 'registro(s)' : key === 'delivered' ? 'entrega(s)' : 'atraso(s)'}`)}"></circle>`).join('');
+  const labels = trend.map((item, index) => `<text x="${x(index).toFixed(1)}" y="${height - 6}" text-anchor="middle">${escapeHtml(item.label)}</text>`).join('');
+  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução mensal"><g class="line-grid"><path d="M${padX} ${padY} H${width - padX}"></path><path d="M${padX} ${height / 2} H${width - padX}"></path><path d="M${padX} ${height - padY} H${width - padX}"></path></g><polyline class="line-series total" points="${line('total')}"></polyline><polyline class="line-series delivered" points="${line('delivered')}"></polyline><polyline class="line-series delayed" points="${line('delayed')}"></polyline>${dots('total', 'total')}${dots('delivered', 'delivered')}${dots('delayed', 'delayed')}<g class="line-labels">${labels}</g></svg><div class="line-legend"><span><i class="total"></i>Total</span><span><i class="delivered"></i>Entregues</span><span><i class="delayed"></i>Atrasos</span></div>`;
+}
+
+function buildMonthlyTrend(rows) {
+  const grouped = groupBy(rows.filter((row) => row.referenceDate), (row) => `${row.referenceDate.getFullYear()}-${String(row.referenceDate.getMonth() + 1).padStart(2, '0')}`);
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-8)
+    .map(([key, list]) => {
+      const [year, month] = key.split('-').map(Number);
+      return { label: `${String(month).padStart(2, '0')}/${String(year).slice(-2)}`, total: list.length, delivered: list.filter((row) => row.delivered).length, delayed: list.filter((row) => row.delayed).length };
+    });
+}
+
+function renderOperationProfile(rows) {
+  const container = document.getElementById('operationProfileChart');
+  if (!container) return;
+  const sections = [
+    ['Tipo de carga', topEntries(countBy(rows, (row) => cleanLabel(row.tpCarga) || 'Sem tipo'), 5)],
+    ['Veículo', topEntries(countBy(rows, (row) => cleanLabel(row.tpVeiculo) || 'Sem veículo'), 5)],
+    ['Transportador', topEntries(countBy(rows, (row) => cleanLabel(row.transportadora) || 'Sem transportador'), 5)]
+  ];
+  container.innerHTML = sections.map(([title, entries]) => miniProfileSection(title, entries)).join('');
+}
+function miniProfileSection(title, entries) {
+  if (!entries.length) return `<section class="profile-section"><h4>${escapeHtml(title)}</h4>${emptyState('Sem dados.')}</section>`;
+  const max = Math.max(...entries.map(([, value]) => value), 1);
+  return `<section class="profile-section"><h4>${escapeHtml(title)}</h4>${entries.map(([label, value], index) => `<div class="profile-row" data-summary="${escapeHtml(`<strong>${label}</strong><br>${formatInteger(value)} registro(s)`)}"><span title="${escapeHtml(label)}">${escapeHtml(truncate(label, 26))}</span><i><em style="width:${Math.max(5, Math.round((value / max) * 100))}%; background:${chartColor(label, index)}"></em></i><b>${formatInteger(value)}</b></div>`).join('')}</section>`;
+}
+function chartColor(seed, index = 0) {
+  const key = normalizeText(seed);
+  if (/danger|fora|atras|devol|ocorr/.test(key)) return '#e05252';
+  if (/success|final|entreg|prazo/.test(key)) return '#2fbf71';
+  if (/warn|aguard/.test(key)) return '#f0a43a';
+  const colors = ['#2a83c6', '#7bdcb5', '#7aa8e8', '#9adfe3', '#bca7f2', '#ffc7d9', '#95d5b2', '#f7c873'];
+  return colors[Math.abs(hashText(key || String(index))) % colors.length];
+}
+function hashText(text) { return String(text).split('').reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0); }
 
 function kpiCard(title, value, subtitle, icon, variant = '', filterStatus = null) {
   const action = filterStatus ? `data-action="filterStatus" data-value="${escapeHtml(filterStatus)}"` : '';
@@ -1089,7 +1178,7 @@ function renderBarList(containerId, data, options = {}) {
   container.innerHTML = entries.map(([label, value]) => { const number = typeof value === 'number' ? value : Number(value) || 0; const width = Math.max(3, Math.round((number / max) * 100)); const cls = options.colorResolver ? options.colorResolver(label, number) : ''; const action = options.actionResolver ? options.actionResolver(label, number) : null; const attrs = action ? `data-action="${escapeHtml(action.action)}" data-value="${escapeHtml(action.value)}"` : ''; const summary = `<strong>${escapeHtml(label)}</strong><br>${formatInteger(number)} registro(s)<br><small>${width}% da maior categoria exibida</small>`; return `<div class="bar-row ${action ? 'clickable' : ''}" ${attrs} data-summary="${escapeHtml(summary)}"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill ${escapeHtml(cls)}" style="width:${width}%"></div></div><div class="bar-value">${formatInteger(number)}</div></div>`; }).join('');
 }
 function renderTagCloud(containerId, entries) { const container = document.getElementById(containerId); if (!entries.length) { container.innerHTML = emptyState('Sem descrições registradas.'); return; } container.innerHTML = entries.map(([label, value]) => `<span class="tag" title="${escapeHtml(label)}"><b>${formatInteger(value)}</b> ${escapeHtml(truncate(label, 54))}</span>`).join(''); }
-function renderInsights(containerId, insights) { const container = document.getElementById(containerId); if (!insights.length) { container.innerHTML = emptyState('Sem alertas para o filtros atuais.'); return; } container.innerHTML = insights.map((item) => `<div class="insight ${escapeHtml(item.type || '')}"><span class="insight-icon">${escapeHtml(item.icon || '•')}</span><div>${escapeHtml(item.text)}</div></div>`).join(''); }
+function renderInsights(containerId, insights) { const container = document.getElementById(containerId); if (!insights.length) { container.innerHTML = emptyState('Sem alertas para os filtros atuais.'); return; } container.innerHTML = insights.map((item) => `<div class="insight ${escapeHtml(item.type || '')}"><span class="insight-icon">${escapeHtml(item.icon || '•')}</span><div>${escapeHtml(item.text)}</div></div>`).join(''); }
 
 function renderRecordsTable(containerId, rows, options = {}) {
   const container = document.getElementById(containerId), limit = options.limit || 250;

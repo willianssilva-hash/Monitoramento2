@@ -175,29 +175,68 @@
             <div id="scheduleCards" class="schedule-cards"></div>
           </article>
 
-          <div class="content-grid two-columns">
-            <article class="panel-card">
+          <div class="general-dashboard-grid" aria-label="Dashboards do acompanhamento geral">
+            <article class="panel-card dashboard-card span-7">
               <div class="panel-header">
                 <div>
                   <h3>Status operacional</h3>
-                  <small>Clique nas barras para filtrar.</small>
+                  <small>Clique nas barras para filtrar ou desfazer.</small>
                 </div>
               </div>
-              <div id="statusChart" class="bar-list"></div>
+              <div id="statusChart" class="bar-list chart-fill"></div>
             </article>
-            <article class="panel-card">
+
+            <article class="panel-card dashboard-card span-5">
+              <div class="panel-header">
+                <div>
+                  <h3>Composição por status</h3>
+                  <small>Gráfico tipo pizza com participação do total.</small>
+                </div>
+              </div>
+              <div id="generalStatusDonut" class="donut-dashboard"></div>
+            </article>
+
+            <article class="panel-card dashboard-card span-8">
+              <div class="panel-header">
+                <div>
+                  <h3>Evolução mensal</h3>
+                  <small>Linhas de volume, entregas e atrasos.</small>
+                </div>
+              </div>
+              <div id="generalTrendChart" class="line-dashboard"></div>
+            </article>
+
+            <article class="panel-card dashboard-card span-4">
+              <div class="panel-header">
+                <div>
+                  <h3>Entregas x pendências</h3>
+                  <small>Visão rápida das cargas concluídas e abertas.</small>
+                </div>
+              </div>
+              <div id="deliveryMixChart" class="donut-dashboard compact-donut"></div>
+            </article>
+
+            <article class="panel-card dashboard-card span-6">
               <div class="panel-header">
                 <div>
                   <h3>Distribuição por UF</h3>
                   <small>Top UFs no período selecionado.</small>
                 </div>
               </div>
-              <div id="ufChart" class="bar-list"></div>
+              <div id="ufChart" class="bar-list chart-fill"></div>
             </article>
-          </div>
 
-          <div class="content-grid two-columns">
-            <article class="panel-card">
+            <article class="panel-card dashboard-card span-6">
+              <div class="panel-header">
+                <div>
+                  <h3>Perfil da operação</h3>
+                  <small>Tipo de carga, veículo e transportador.</small>
+                </div>
+              </div>
+              <div id="operationProfileChart" class="stacked-dashboard"></div>
+            </article>
+
+            <article class="panel-card dashboard-card span-5">
               <div class="panel-header">
                 <div>
                   <h3>Unidade selecionada</h3>
@@ -206,7 +245,8 @@
               </div>
               <div id="sourcePanels" class="source-panels"></div>
             </article>
-            <article class="panel-card">
+
+            <article class="panel-card dashboard-card span-7">
               <div class="panel-header">
                 <div>
                   <h3>Insights automáticos</h3>
@@ -560,7 +600,7 @@
   </div>
 
   <button class="ai-fab" id="aiFab" type="button" aria-label="Abrir Monitor IA">
-    <span class="ai-fab-icon">✦</span>
+    <span class="ai-fab-icon">🤖</span>
     <span>Monitor IA</span>
   </button>
 
