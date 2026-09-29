@@ -330,61 +330,106 @@
         </section>
 
         <section class="tab-panel" id="tab-map" data-tab-panel="map">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Mapa operacional</p>
-              <h2>Mapa do Brasil</h2>
-            </div>
-            <p>Passe o mouse para resumo regional. Clique na região para abrir um painel detalhado.</p>
-          </div>
-
-          <div class="map-filters">
-            <label>
-              <span>Região</span>
-              <select id="mapRegionFilter">
-                <option value="all">Todas as regiões</option>
-                <option value="Norte">Norte</option>
-                <option value="Nordeste">Nordeste</option>
-                <option value="Centro-Oeste">Centro-Oeste</option>
-                <option value="Sudeste">Sudeste</option>
-                <option value="Sul">Sul</option>
-              </select>
-            </label>
-            <label>
-              <span>Status no mapa</span>
-              <select id="mapStatusFilter">
-                <option value="all">Todos</option>
-                <option value="open">Entregas em aberto</option>
-                <option value="transit">Veículos em trânsito</option>
-                <option value="delayed">Cargas em atraso</option>
-                <option value="occurrence">Ocorrências</option>
-                <option value="return">Devoluções</option>
-              </select>
-            </label>
-            <button class="btn" id="applyMapRegionGlobal" type="button">Aplicar região aos filtros</button>
-          </div>
-
-          <div class="map-layout">
-            <article class="panel-card map-card">
-              <div id="brazilMap" class="brazil-map" aria-label="Mapa interativo do Brasil por regiões"></div>
-            </article>
-            <aside class="panel-card region-panel">
-              <div class="panel-header">
-                <div>
-                  <h3 id="regionPanelTitle">Todas as regiões</h3>
-                  <small id="regionPanelSub">Resumo do recorte selecionado.</small>
-                </div>
+          <div class="map-onsupply-shell">
+            <div class="map-onsupply-header">
+              <div class="map-onsupply-brand">
+                <img src="assets/logo-colormaq.svg" alt="Colormaq" />
+                <span>Mapa Operacional</span>
               </div>
-              <div id="regionSummary" class="region-summary"></div>
-              <div class="panel-header compact"><h3>Monitor IA • Alertas do mapa</h3></div>
-              <div id="mapAiAlerts" class="insight-list"></div>
-            </aside>
-          </div>
+              <div class="map-filters onsupply-filters">
+                <label>
+                  <span>Região</span>
+                  <select id="mapRegionFilter">
+                    <option value="all">Todas as regiões</option>
+                    <option value="Norte">Norte</option>
+                    <option value="Nordeste">Nordeste</option>
+                    <option value="Centro-Oeste">Centro-Oeste</option>
+                    <option value="Sudeste">Sudeste</option>
+                    <option value="Sul">Sul</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Status no mapa</span>
+                  <select id="mapStatusFilter">
+                    <option value="all">Todos</option>
+                    <option value="open">Entregas em aberto</option>
+                    <option value="transit">Veículos em trânsito</option>
+                    <option value="delayed">Cargas em atraso</option>
+                    <option value="occurrence">Ocorrências</option>
+                    <option value="return">Devoluções</option>
+                  </select>
+                </label>
+                <button class="btn" id="applyMapRegionGlobal" type="button">Aplicar região</button>
+              </div>
+            </div>
 
-          <article class="panel-card table-card">
-            <div class="panel-header"><h3>Detalhes da região selecionada</h3></div>
-            <div id="mapTable" class="table-wrap"></div>
-          </article>
+            <div class="map-onsupply-grid">
+              <article class="onsupply-card total-card total-done">
+                <div class="onsupply-card-title">Total de entregas realizadas <span>ⓘ</span></div>
+                <strong id="mapCompletedTotal">0</strong>
+              </article>
+              <article class="onsupply-card total-card total-pending">
+                <div class="onsupply-card-title">Total de entregas pendentes <span>ⓘ</span></div>
+                <strong id="mapPendingTotal">0</strong>
+              </article>
+
+              <article class="onsupply-card gauge-panel gauge-delivered">
+                <div class="onsupply-card-title">% Performance de Entrega <span>ⓘ</span></div>
+                <div id="mapPerformanceGauge" class="map-speedometer"></div>
+              </article>
+              <article class="onsupply-card mini-stat delivered-on-time">
+                <div class="onsupply-card-title">No prazo <span>ⓘ</span></div>
+                <strong id="mapDeliveredOnTime">0</strong>
+              </article>
+              <article class="onsupply-card mini-stat delivered-late">
+                <div class="onsupply-card-title">Atrasadas <span>ⓘ</span></div>
+                <strong id="mapDeliveredLate">0</strong>
+              </article>
+
+              <article class="onsupply-card gauge-panel gauge-pending">
+                <div class="onsupply-card-title">% Pendentes no prazo <span>ⓘ</span></div>
+                <div id="mapPendingGauge" class="map-speedometer"></div>
+              </article>
+              <article class="onsupply-card mini-stat pending-on-time">
+                <div class="onsupply-card-title">No prazo <span>ⓘ</span></div>
+                <strong id="mapPendingOnTime">0</strong>
+              </article>
+              <article class="onsupply-card mini-stat pending-late">
+                <div class="onsupply-card-title">Atrasadas <span>ⓘ</span></div>
+                <strong id="mapPendingLate">0</strong>
+              </article>
+
+              <article class="onsupply-card map-heatmap-card">
+                <div id="brazilMap" class="brazil-map heatmap-brazil" aria-label="Mapa de calor operacional do Brasil"></div>
+              </article>
+
+              <article class="onsupply-card evolution-card">
+                <div class="onsupply-card-title">Evolução da Performance de Entrega <span>ⓘ</span></div>
+                <div id="mapEvolutionChart" class="map-evolution-chart"></div>
+              </article>
+            </div>
+
+            <div class="map-ai-row">
+              <article class="onsupply-card region-panel-mini">
+                <div class="panel-header compact">
+                  <div>
+                    <h3 id="regionPanelTitle">Todas as regiões</h3>
+                    <small id="regionPanelSub">Resumo do recorte selecionado.</small>
+                  </div>
+                </div>
+                <div id="regionSummary" class="region-summary"></div>
+              </article>
+              <article class="onsupply-card region-panel-mini">
+                <div class="panel-header compact"><h3>Monitor IA • Alertas do mapa</h3></div>
+                <div id="mapAiAlerts" class="insight-list"></div>
+              </article>
+            </div>
+
+            <article class="onsupply-card table-card map-detail-table">
+              <div class="panel-header"><h3>Detalhamento das notas fiscais</h3></div>
+              <div id="mapTable" class="table-wrap"></div>
+            </article>
+          </div>
         </section>
       </main>
 

@@ -484,10 +484,41 @@ function renderReturns() {
 
 function renderMap() {
   const mapRows = getMapRows();
-  const regions = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
-  const regionMetrics = Object.fromEntries(regions.map((region) => [region, computeRegionMetrics(mapRows.filter((row) => row.region === region))]));
-  const maxOpen = Math.max(1, ...Object.values(regionMetrics).map((metric) => metric.open));
   const selected = STATE.selectedRegion;
+  const panelRows = selected === 'all' ? mapRows : mapRows.filter((row) => row.region === selected);
+  const panelMetric = selected === 'all' ? computeRegionMetrics(mapRows) : computeRegionMetrics(panelRows);
+
+  const completedRows = STATE.filtered.filter((row) => row.delivered || row.waitingUnload);
+  const pendingRows = STATE.filtered.filter((row) => !row.delivered && !row.waitingUnload);
+  const deliveredLate = completedRows.filter((row) => row.delayed || row.ontimeStatus === false).length;
+  const deliveredOnTime = Math.max(0, completedRows.length - deliveredLate);
+  const pendingLate = pendingRows.filter((row) => row.delayed).length;
+  const pendingOnTime = Math.max(0, pendingRows.length - pendingLate);
+  const deliveredRate = completedRows.length ? Math.round((deliveredOnTime / completedRows.length) * 100) : 0;
+  const pendingRate = pendingRows.length ? Math.round((pendingOnTime / pendingRows.length) * 100) : 0;
+
+  setText('mapCompletedTotal', formatInteger(completedRows.length));
+  setText('mapPendingTotal', formatInteger(pendingRows.length));
+  setText('mapDeliveredOnTime', formatInteger(deliveredOnTime));
+  setText('mapDeliveredLate', formatInteger(deliveredLate));
+  setText('mapPendingOnTime', formatInteger(pendingOnTime));
+  setText('mapPendingLate', formatInteger(pendingLate));
+  setHtml('mapPerformanceGauge', speedometerHtml(deliveredRate, deliveredRate >= 90 ? '#1789c9' : '#ee2f52'));
+  setHtml('mapPendingGauge', speedometerHtml(pendingRate, pendingRate >= 90 ? '#1789c9' : '#e9b800'));
+  setHtml('mapEvolutionChart', evolutionHtml(STATE.filtered));
+
+  renderHeatmapBrazil(panelRows, selected);
+  document.getElementById('regionPanelTitle').textContent = selected === 'all' ? 'Todas as regiões' : selected;
+  document.getElementById('regionPanelSub').textContent = `${formatInteger(panelRows.length)} registros no mapa filtrado.`;
+  renderRegionSummary(panelMetric);
+  renderInsights('mapAiAlerts', buildMapAlerts(panelRows, selected));
+  renderRecordsTable('mapTable', panelRows, { limit: 300, empty: 'Nenhum registro para a região/status selecionado.' });
+}
+
+function renderHeatmapBrazil(rows, selected) {
+  const regions = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
+  const regionMetrics = Object.fromEntries(regions.map((region) => [region, computeRegionMetrics(rows.filter((row) => row.region === region))]));
+  const maxOpen = Math.max(1, ...Object.values(regionMetrics).map((metric) => metric.open + metric.delayed + metric.occurrences + metric.returns));
   const outline = 'M305 42 C282 44 266 56 245 59 C219 63 205 82 187 98 C166 117 139 110 122 131 C105 152 106 178 88 197 C69 217 47 229 51 258 C55 289 82 304 106 319 C132 335 138 360 130 389 C121 423 142 454 176 463 C204 471 222 491 243 509 C272 535 313 535 338 509 C356 491 379 478 407 484 C443 491 476 466 483 430 C488 405 503 388 524 372 C558 346 575 308 566 268 C558 232 530 212 513 182 C497 154 496 121 471 98 C446 74 411 73 380 63 C354 55 334 39 305 42 Z';
   const regionPaths = {
     Norte: 'M52 255 C57 222 82 207 99 188 C115 169 112 145 130 128 C148 111 169 119 190 99 C207 83 221 63 247 59 C269 56 284 44 306 42 C335 39 354 55 380 63 L382 153 L342 214 L294 252 L224 246 L157 308 L106 320 C82 305 56 286 52 255 Z',
@@ -497,47 +528,119 @@ function renderMap() {
     Sul: 'M210 395 L286 421 L338 509 C313 535 272 535 243 509 C222 491 204 471 176 463 C154 457 137 441 130 421 Z'
   };
   const labelPos = { Norte: [218, 165], Nordeste: [455, 214], 'Centro-Oeste': [285, 335], Sudeste: [419, 418], Sul: [245, 462] };
-  const colors = { Norte: '#2ec4e6', Nordeste: '#ffb22c', 'Centro-Oeste': '#8d62db', Sudeste: '#ee3f86', Sul: '#38de68' };
+  const colors = { Norte: '#dfeef4', Nordeste: '#e6f0ec', 'Centro-Oeste': '#e6ebf4', Sudeste: '#edf0f7', Sul: '#e9f4ec' };
+  const ufGroups = groupBy(rows.filter((row) => row.uf && UF_MAP_POINTS[row.uf]), (row) => row.uf);
+  const maxUf = Math.max(1, ...Object.values(ufGroups).map((items) => items.length));
+  const heatSpots = Object.entries(ufGroups).map(([uf, items]) => {
+    const point = UF_MAP_POINTS[uf];
+    const metric = computeRegionMetrics(items);
+    const weight = items.length + metric.delayed * 1.6 + metric.occurrences * 1.25 + metric.returns * 1.25;
+    const radius = Math.min(50, 15 + Math.sqrt(weight / maxUf) * 42);
+    return `<g class="heat-spot" data-uf="${escapeHtml(uf)}" data-count="${items.length}" data-delayed="${metric.delayed}" transform="translate(${point.x} ${point.y})">
+      <circle r="${radius}" fill="#11e680" opacity="0.28"></circle>
+      <circle r="${radius * 0.68}" fill="#ffe100" opacity="0.42"></circle>
+      <circle r="${radius * 0.42}" fill="#ff1e1e" opacity="0.74"></circle>
+      <text y="4" text-anchor="middle" class="heat-label">${escapeHtml(uf)}</text>
+    </g>`;
+  }).join('');
+
   document.getElementById('brazilMap').innerHTML = `
-    <svg viewBox="0 0 620 590" role="img" aria-label="Mapa do Brasil por regiões">
+    <svg viewBox="0 0 620 590" role="img" aria-label="Mapa de calor do Brasil por UF">
       <defs>
-        <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8fbff"/><stop offset="1" stop-color="#eef4fb"/></linearGradient>
-        <clipPath id="brasilClip"><path d="${outline}"></path></clipPath>
+        <linearGradient id="seaBg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#bfe5ef"/><stop offset="1" stop-color="#9ccfdc"/></linearGradient>
+        <clipPath id="brasilClipHeat"><path d="${outline}"></path></clipPath>
+        <filter id="heatBlur"><feGaussianBlur stdDeviation="1.8"/></filter>
       </defs>
-      <rect x="10" y="10" width="600" height="570" rx="18" fill="url(#mapBg)"/>
-      <g clip-path="url(#brasilClip)">
+      <rect x="0" y="0" width="620" height="590" fill="url(#seaBg)"/>
+      <g class="map-tile-lines" opacity="0.5">
+        <path d="M14 123 C82 82 150 86 209 130 C277 181 353 160 420 120 C486 81 552 94 617 142"></path>
+        <path d="M14 360 C83 304 174 310 249 352 C333 399 406 387 478 336 C529 300 573 295 617 306"></path>
+        <path d="M82 0 C108 99 116 198 99 296 C83 393 97 489 139 590"></path>
+        <path d="M486 0 C462 118 462 226 494 326 C525 420 518 506 482 590"></path>
+      </g>
+      <g clip-path="url(#brasilClipHeat)">
         ${regions.map((region) => {
           const metric = regionMetrics[region];
-          const opacity = 0.62 + (metric.open / maxOpen) * 0.28;
+          const intensity = (metric.open + metric.delayed + metric.occurrences + metric.returns) / maxOpen;
+          const opacity = 0.7 + intensity * 0.25;
           return `<path class="map-region ${selected === region ? 'active' : ''}" data-region="${region}" d="${regionPaths[region]}" fill="${colors[region]}" fill-opacity="${opacity.toFixed(2)}"></path>`;
         }).join('')}
-        <g class="state-lines" opacity="0.75">
-          <path d="M132 129 C155 172 190 192 223 246"></path>
-          <path d="M246 59 C260 110 285 163 294 252"></path>
-          <path d="M380 63 C370 117 365 174 343 215"></path>
-          <path d="M513 182 C475 196 430 213 392 260"></path>
-          <path d="M566 268 C513 279 467 302 394 334"></path>
-          <path d="M106 320 C159 329 214 350 286 421"></path>
-          <path d="M130 389 C196 392 252 401 351 392"></path>
-          <path d="M338 509 C357 463 382 431 469 345"></path>
-          <path d="M210 395 C219 431 227 470 243 509"></path>
+        <g class="state-lines" opacity="0.62">
+          <path d="M132 129 C155 172 190 192 223 246"></path><path d="M246 59 C260 110 285 163 294 252"></path><path d="M380 63 C370 117 365 174 343 215"></path><path d="M513 182 C475 196 430 213 392 260"></path><path d="M566 268 C513 279 467 302 394 334"></path><path d="M106 320 C159 329 214 350 286 421"></path><path d="M130 389 C196 392 252 401 351 392"></path><path d="M338 509 C357 463 382 431 469 345"></path><path d="M210 395 C219 431 227 470 243 509"></path>
         </g>
+        <g filter="url(#heatBlur)">${heatSpots}</g>
       </g>
       <path class="brazil-outline" d="${outline}"></path>
-      ${regions.map((region) => `<text class="map-label" x="${labelPos[region][0]}" y="${labelPos[region][1]}">${region.toUpperCase()}</text>`).join('')}
+      <g class="map-city-labels">
+        <text x="235" y="164">Manaus</text><text x="397" y="352">Brasília</text><text x="386" y="466">São Paulo</text><text x="477" y="371">Salvador</text><text x="524" y="304">Recife</text>
+      </g>
+      ${regions.map((region) => `<text class="map-label region-heat-label" x="${labelPos[region][0]}" y="${labelPos[region][1]}">${region}</text>`).join('')}
+      <g class="heat-legend" transform="translate(425 528)">
+        <rect width="174" height="42" rx="7" fill="rgba(255,255,255,.82)"></rect>
+        <circle cx="18" cy="21" r="10" fill="#11e680" opacity=".45"></circle><circle cx="44" cy="21" r="10" fill="#ffe100" opacity=".6"></circle><circle cx="70" cy="21" r="10" fill="#ff1e1e" opacity=".76"></circle>
+        <text x="92" y="18">Mapa de calor</text><text x="92" y="32">volume e criticidade</text>
+      </g>
     </svg>`;
+
   const map = document.getElementById('brazilMap');
   map.querySelectorAll('.map-region').forEach((path) => {
     path.addEventListener('mousemove', (event) => showMapTooltip(event, path.dataset.region, regionMetrics[path.dataset.region]));
     path.addEventListener('mouseleave', hideTooltip);
     path.addEventListener('click', () => { STATE.selectedRegion = path.dataset.region; DOM.mapRegionFilter.value = STATE.selectedRegion; renderMap(); });
   });
-  const panelRows = selected === 'all' ? mapRows : mapRows.filter((row) => row.region === selected);
-  const panelMetric = selected === 'all' ? computeRegionMetrics(mapRows) : regionMetrics[selected];
-  document.getElementById('regionPanelTitle').textContent = selected === 'all' ? 'Todas as regiões' : selected;
-  document.getElementById('regionPanelSub').textContent = `${formatInteger(panelRows.length)} registros no mapa filtrado.`;
-  renderRegionSummary(panelMetric); renderInsights('mapAiAlerts', buildMapAlerts(panelRows, selected)); renderRecordsTable('mapTable', panelRows, { limit: 300, empty: 'Nenhum registro para a região/status selecionado.' });
+  map.querySelectorAll('.heat-spot').forEach((spot) => {
+    const uf = spot.dataset.uf;
+    const ufRows = rows.filter((row) => row.uf === uf);
+    spot.addEventListener('mousemove', (event) => showUfTooltip(event, uf, ufRows));
+    spot.addEventListener('mouseleave', hideTooltip);
+    spot.addEventListener('click', () => { DOM.filterUf.value = uf; onFilterChange(); });
+  });
 }
+
+function speedometerHtml(rate, color) {
+  const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
+  return `<svg viewBox="0 0 220 132" class="speedometer-svg" aria-label="${safeRate}%">
+    <path d="M24 112 A86 86 0 0 1 196 112" pathLength="100" class="speed-bg"></path>
+    <path d="M24 112 A86 86 0 0 1 196 112" pathLength="100" class="speed-value" stroke="${color}" stroke-dasharray="${safeRate} ${100 - safeRate}"></path>
+    <line x1="110" y1="112" x2="${110 + Math.cos((180 + (safeRate / 100) * 180) * Math.PI / 180) * 76}" y2="${112 + Math.sin((180 + (safeRate / 100) * 180) * Math.PI / 180) * 76}" class="speed-needle"></line>
+    <circle cx="110" cy="112" r="5" fill="#5f6877"></circle>
+    <text x="110" y="106" text-anchor="middle" class="speed-text" fill="${color}">${safeRate.toFixed(1)}%</text>
+  </svg>`;
+}
+
+function evolutionHtml(rows) {
+  const datedRows = rows.filter((row) => row.referenceDate);
+  const anchor = datedRows.length ? new Date(Math.max(...datedRows.map((row) => row.referenceDate.getTime()))) : new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i -= 1) months.push(new Date(anchor.getFullYear(), anchor.getMonth() - i, 1));
+  return months.map((month) => {
+    const monthRows = rows.filter((row) => row.referenceDate && row.referenceDate.getFullYear() === month.getFullYear() && row.referenceDate.getMonth() === month.getMonth());
+    const eligible = monthRows.filter((row) => row.performanceEligible || row.delivered || row.waitingUnload);
+    const ontime = eligible.filter((row) => row.ontimeStatus === true || (!row.delayed && row.ontimeStatus !== false)).length;
+    const rate = eligible.length ? Math.round((ontime / eligible.length) * 1000) / 10 : 0;
+    const height = Math.max(8, Math.min(100, rate));
+    return `<div class="map-evolution-item"><div class="map-evolution-value">${rate.toFixed(1)}%</div><div class="map-evolution-bar"><span style="height:${height}%"></span></div><div class="map-evolution-label">${String(month.getMonth() + 1).padStart(2, '0')}/${String(month.getFullYear()).slice(-2)}</div></div>`;
+  }).join('');
+}
+
+function showUfTooltip(event, uf, rows) {
+  const metric = computeRegionMetrics(rows);
+  DOM.tooltip.innerHTML = `<strong>${escapeHtml(uf)}</strong><br>${formatInteger(rows.length)} entregas/notas no recorte<br>${formatInteger(metric.open)} em aberto • ${formatInteger(metric.transit)} em trânsito<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências • ${formatInteger(metric.returns)} devoluções`;
+  DOM.tooltip.style.left = `${event.clientX}px`;
+  DOM.tooltip.style.top = `${event.clientY}px`;
+  DOM.tooltip.classList.add('visible');
+}
+
+const UF_MAP_POINTS = {
+  AC: { x: 94, y: 265 }, AM: { x: 224, y: 168 }, RR: { x: 257, y: 78 }, AP: { x: 377, y: 111 }, PA: { x: 357, y: 184 }, RO: { x: 203, y: 270 }, TO: { x: 409, y: 270 },
+  MA: { x: 468, y: 224 }, PI: { x: 493, y: 258 }, CE: { x: 532, y: 250 }, RN: { x: 559, y: 269 }, PB: { x: 549, y: 288 }, PE: { x: 536, y: 307 }, AL: { x: 523, y: 326 }, SE: { x: 514, y: 346 }, BA: { x: 474, y: 374 },
+  MT: { x: 309, y: 316 }, MS: { x: 312, y: 394 }, GO: { x: 391, y: 351 }, DF: { x: 414, y: 350 },
+  MG: { x: 430, y: 420 }, ES: { x: 487, y: 440 }, RJ: { x: 461, y: 468 }, SP: { x: 389, y: 466 },
+  PR: { x: 365, y: 501 }, SC: { x: 383, y: 529 }, RS: { x: 370, y: 558 }
+};
+
+function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+function setHtml(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
 function getMapRows() { return STATE.filtered.filter((row) => !(STATE.mapStatus === 'open' && !row.open) && !(STATE.mapStatus === 'transit' && !row.transit) && !(STATE.mapStatus === 'delayed' && !row.delayed) && !(STATE.mapStatus === 'occurrence' && !row.hasOccurrence) && !(STATE.mapStatus === 'return' && !row.hasReturn)); }
 function computeRegionMetrics(rows) { return { total: rows.length, open: rows.filter((row) => row.open).length, transit: rows.filter((row) => row.transit).length, doingDelivery: rows.filter((row) => normalizeText(row.status).includes('entrega') || row.waitingUnload).length, delayed: rows.filter((row) => row.delayed).length, occurrences: rows.filter((row) => row.hasOccurrence).length, returns: rows.filter((row) => row.hasReturn).length, vehicles: uniqueCount(rows, (row) => row.placa || row.motorista || row.of), todayAgendas: rows.filter((row) => isSameDay(row.agendaDate || row.previsaoEntregaDate, new Date())).length }; }
 function renderRegionSummary(metric) { const items = [['Entregas em aberto', metric.open], ['Veículos em trânsito', metric.transit], ['Fazendo entrega', metric.doingDelivery], ['Cargas em atraso', metric.delayed], ['Ocorrências recentes', metric.occurrences], ['Devoluções', metric.returns], ['Veículos / motoristas', metric.vehicles], ['Agendas hoje', metric.todayAgendas]]; document.getElementById('regionSummary').innerHTML = items.map(([label, value]) => `<div class="region-metric"><span>${escapeHtml(label)}</span><strong>${formatInteger(value)}</strong></div>`).join(''); }
