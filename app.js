@@ -423,8 +423,8 @@ function getAliasedValue(record, aliases) {
   const normalizedKeys = keys.map((key) => ({ key, norm: normalizeText(key) }));
   const normalizedAliases = aliases.map((alias) => normalizeText(alias)).filter(Boolean);
   for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias) || alias.startsWith(item.norm)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias) || alias.includes(item.norm)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias) || (item.norm.length >= 8 && alias.startsWith(item.norm))); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
   return '';
 }
 
