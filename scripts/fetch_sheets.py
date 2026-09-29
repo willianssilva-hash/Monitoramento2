@@ -223,9 +223,18 @@ def discover_gids(pubhtml: str, base_pub: str) -> list[str]:
     return gids
 
 
+def candidate_score(records: list[dict], fields: list[str]) -> tuple[int, int, int, int]:
+    visible_fields = [field for field in fields if not str(field).startswith("__")]
+    known = header_score(visible_fields)
+    # Priorização: maior quantidade de colunas publicadas, aderência aos cabeçalhos
+    # esperados e, por fim, volume de linhas. Assim evitamos parar na primeira aba
+    # quando a publicação contém outras abas/gids com a base completa.
+    return (len(visible_fields), known, min(len(records), 20000), len(records))
+
+
 def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     errors: list[str] = []
-    fields: list[str] = []
+    candidates_found: list[tuple[tuple[int, int, int, int], str, list[dict], list[str]]] = []
     base = f"https://docs.google.com/spreadsheets/d/e/{source['pubId']}"
     pubhtml_text = ""
 
@@ -236,7 +245,7 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
 
     gids = discover_gids(pubhtml_text, base) if pubhtml_text else ["0"]
     csv_urls = [f"{base}/pub?gid={gid}&single=true&output=csv" for gid in gids]
-    csv_urls.insert(0, f"{base}/pub?output=csv")
+    csv_urls.append(f"{base}/pub?output=csv")
 
     seen_urls: set[str] = set()
     for url in csv_urls:
@@ -248,27 +257,35 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
             records = rows_to_records(rows, source)
             if records:
                 fields = list(records[0].keys())
-                return records, fields, errors
-            errors.append(f"csv sem dados: {url}")
+                score = candidate_score(records, fields)
+                candidates_found.append((score, f"csv:{url}", records, fields))
+                errors.append(f"candidato {url}: {len(records)} linhas / {len(fields)} campos / score {score}")
+            else:
+                errors.append(f"csv sem dados: {url}")
         except Exception as exc:  # noqa: BLE001
             errors.append(f"csv {url}: {exc}")
 
     if pubhtml_text:
         try:
-            best: list[dict] = []
-            for table in parse_html_tables(pubhtml_text):
+            for index, table in enumerate(parse_html_tables(pubhtml_text), start=1):
                 records = rows_to_records(table, source)
-                if len(records) > len(best):
-                    best = records
-            if best:
-                fields = list(best[0].keys())
-                return best, fields, errors
-            errors.append("html sem tabela útil")
+                if records:
+                    fields = list(records[0].keys())
+                    score = candidate_score(records, fields)
+                    candidates_found.append((score, f"html:table-{index}", records, fields))
+                    errors.append(f"candidato html table-{index}: {len(records)} linhas / {len(fields)} campos / score {score}")
+            if not any(origin.startswith("html:") for _, origin, _, _ in candidates_found):
+                errors.append("html sem tabela útil")
         except Exception as exc:  # noqa: BLE001
             errors.append(f"html parse: {exc}")
 
-    return [], fields, errors
+    if candidates_found:
+        candidates_found.sort(key=lambda item: item[0], reverse=True)
+        score, origin, records, fields = candidates_found[0]
+        errors.append(f"selecionado {origin}: {len(records)} linhas / {len(fields)} campos / score {score}")
+        return records, fields, errors
 
+    return [], [], errors
 
 def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
