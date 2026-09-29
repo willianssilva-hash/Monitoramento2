@@ -423,7 +423,7 @@ function getAliasedValue(record, aliases) {
   const normalizedKeys = keys.map((key) => ({ key, norm: normalizeText(key) }));
   const normalizedAliases = aliases.map((alias) => normalizeText(alias)).filter(Boolean);
   for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias) || (item.norm.length >= 8 && alias.startsWith(item.norm))); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
   for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
   return '';
 }
@@ -481,8 +481,8 @@ function normalizeReturnType(row) {
   if (/\btotal\b/.test(text)) return 'Total';
   return row.hasReturn ? 'Não informado' : '';
 }
-function isMeaningfulOccurrence(value) { const n = normalizeText(value); return Boolean(n && !/(^nao$|^não$|sem ocorrencia|sem ocorrência|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
-function isMeaningfulReturn(value) { const n = normalizeText(value); return Boolean(n && !/(^nao$|^não$|sem devolucao|sem devolução|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
+function isMeaningfulOccurrence(value) { const n = normalizeText(value); return Boolean(n && !/(^(nao|não)(\s+(nao|não))*$|sem ocorrencia|sem ocorrência|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
+function isMeaningfulReturn(value) { const n = normalizeText(value); return Boolean(n && !/(^(nao|não)(\s+(nao|não))*$|sem devolucao|sem devolução|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
 function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
 
 function populateSourceFilter() {
