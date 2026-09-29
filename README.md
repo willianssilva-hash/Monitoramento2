@@ -17,7 +17,7 @@ A aplicação lê a aba **acompanhamento**/primeira aba publicada das planilhas,
   - **Devoluções**: tipo, motivos, regiões, motoristas/placas e observações.
   - **Mapa**: mapa interativo por regiões do Brasil, tooltip no hover, painel no clique e alertas do Monitor IA.
 - **Monitor IA** local: responde perguntas sobre o recorte carregado, gera relatórios rápidos e orienta onde encontrar informações.
-- **News Tracker** no rodapé com agendas D+2, ocorrências, atrasos, devoluções e clima por região.
+- **Info. Ao Vivo** no rodapé com agendas D+2, ocorrências, atrasos, devoluções e clima por região.
 - Filtros por período, origem, UF, status e busca livre.
 - Exportação CSV e relatório TXT.
 - Compatível com GitHub Pages; não requer build nem backend.
@@ -36,6 +36,7 @@ O repositório contém workflow em `.github/workflows/pages.yml` para publicar o
 
 ## Observações técnicas
 
-- As planilhas são consultadas por URL pública publicada (`/pub?output=csv` e `/pubhtml`), com fallback por proxy CORS quando o navegador bloquear leitura direta.
-- Se todas as fontes externas ficarem indisponíveis, o painel entra em modo demonstrativo para continuar navegável e exibe alerta no topo.
+- Antes do deploy, o GitHub Actions executa `scripts/fetch_sheets.py` e gera `data/sheets.json` com 100% das linhas/colunas encontradas nas planilhas publicadas. O painel lê esse snapshot local para evitar bloqueios de CORS no navegador.
+- O workflow também possui agenda `*/10 * * * *`; após estar na branch padrão, ele atualiza o snapshot a cada 10 minutos. O botão **Atualizar agora** recarrega o snapshot publicado e tenta fallback direto nas planilhas.
+- Se o snapshot e as fontes externas ficarem indisponíveis, o painel entra em modo demonstrativo para continuar navegável e exibe alerta no topo.
 - O agente **Monitor IA** é uma camada analítica local, baseada nos dados carregados no painel; não envia dados a serviços de IA externos.

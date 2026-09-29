@@ -5,6 +5,10 @@ on:
     branches:
       - arena/01a0ee71-monitoramento2
       - main
+  schedule:
+    # Atualiza o snapshot das planilhas a cada 10 minutos quando o workflow
+    # estiver presente na branch padrão do repositório.
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -25,12 +29,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Generate Google Sheets snapshot
+        run: python3 scripts/fetch_sheets.py
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
       - name: Upload static dashboard
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

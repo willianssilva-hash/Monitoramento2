@@ -20,9 +20,11 @@ const CONFIG = {
     placa: ['Placa', 'Cavalo', 'Placa Cavalo', 'Veículo', 'Veiculo'],
     recebVeiculo: ['Receb Veículo', 'Receb Veiculo', 'Recebimento Veículo', 'Recebimento Veiculo', 'Data Receb Veiculo'],
     faturamento: ['Faturamento', 'Status Faturamento', 'Situação Faturamento', 'Situacao Faturamento'],
-    notaFiscal: ['NF', 'Nota Fiscal', 'Nº NF', 'N NF', 'Nota', 'Notas', 'NFe', 'NFe/CTe'],
+    emissao: ['Emissão', 'Emissao', 'Data Emissão', 'Data Emissao', 'Dt Emissão', 'Dt Emissao'],
+    saida: ['Saída', 'Saida', 'Data Saída', 'Data Saida', 'Dt Saída', 'Dt Saida', 'Expedição', 'Expedicao'],
+    notaFiscal: ['NF', 'Nota Fiscal', 'NOTA FISCAL', 'Nº NF', 'N NF', 'Nota', 'Notas', 'NFe', 'NFe/CTe'],
     motorista: ['Motorista', 'Nome Motorista', 'Condutor', 'Driver'],
-    transportadora: ['Transportadora', 'Transp', 'Parceiro', 'Operador'],
+    transportadora: ['Transportadora', 'Transportador', 'Transp', 'Parceiro', 'Operador'],
     status: ['Status', 'Situação', 'Situacao', 'Status Entrega', 'Status da Entrega', 'Acompanhamento', 'Ocorrência Status', 'Status Viagem'],
     previsaoEntrega: ['Previsão de Entrega', 'Previsao de Entrega', 'Prev Entrega', 'Prev. Entrega', 'Data Prevista Entrega', 'Previsão', 'Previsao'],
     chegadaCliente: ['Chegada no cliente', 'Chegada Cliente', 'Data Chegada Cliente', 'Chegada', 'Data Entrega', 'Entrega Realizada'],
@@ -55,6 +57,7 @@ const STATE = {
 };
 const DOM = {};
 const pendingGviz = new Map();
+let snapshotPromise = null;
 let gvizInstalled = false;
 let loadSequence = 0;
 const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard. descarga': 'warn', 'Em trânsito': 'info', 'Em aberto': 'purple', Faturado: 'purple' };
@@ -119,6 +122,7 @@ function selectSourceTab(source) {
 async function loadData({ manual = false } = {}) {
   const seq = ++loadSequence;
   STATE.isLoading = true;
+  snapshotPromise = null;
   setLoadStatus('loading', manual ? 'Atualizando manualmente...' : 'Atualizando planilhas...');
   showBanner('', '');
   const sourceResults = await Promise.all(CONFIG.sources.map(async (source) => {
@@ -143,13 +147,52 @@ async function loadData({ manual = false } = {}) {
 }
 
 async function fetchSource(source) {
+  const errors = [];
+
+  try {
+    const snapshotRecords = await fetchSnapshotSource(source);
+    if (snapshotRecords.length) return snapshotRecords;
+    errors.push('snapshot local sem registros');
+  } catch (error) {
+    errors.push(`snapshot: ${error.message || error}`);
+  }
+
   try {
     const publishedRecords = await fetchPublishedData(source);
     if (publishedRecords.length) return publishedRecords;
-    throw new Error('publicação CSV/HTML sem registros');
+    errors.push('publicação CSV/HTML sem registros');
   } catch (error) {
-    throw new Error(error.message || 'Não foi possível consultar a planilha publicada.');
+    errors.push(`publicação: ${error.message || error}`);
   }
+
+  throw new Error(errors.filter(Boolean).join(' | ') || 'Não foi possível consultar a planilha publicada.');
+}
+
+async function loadSheetSnapshot() {
+  if (!snapshotPromise) {
+    snapshotPromise = fetch(`data/sheets.json?_=${Date.now()}`, { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      });
+  }
+  return snapshotPromise;
+}
+
+async function fetchSnapshotSource(source) {
+  const snapshot = await loadSheetSnapshot();
+  if (!snapshot || !Array.isArray(snapshot.sources)) throw new Error('arquivo data/sheets.json inválido');
+  const sourceData = snapshot.sources.find((item) => item.key === source.key || item.short === source.short || item.name === source.name);
+  if (!sourceData || !Array.isArray(sourceData.records) || !sourceData.records.length) throw new Error(`${source.short} sem registros no snapshot`);
+  return sourceData.records.map((record, index) => ({
+    ...record,
+    __source: source.short,
+    __sourceName: source.name,
+    __sourceKey: source.key,
+    __sourceUrl: source.url,
+    __rowIndex: record.__rowIndex || index + 2,
+    __snapshotGeneratedAt: snapshot.generatedAt || ''
+  }));
 }
 
 async function fetchPublishedData(source) {
@@ -314,7 +357,7 @@ function normalizeRecord(record, index) {
   const row = { id: `${record.__sourceKey || 'src'}-${record.__rowIndex || index}-${Math.random().toString(36).slice(2, 6)}`, source: record.__source || '', sourceKey: record.__sourceKey || '', sourceName: record.__sourceName || record.__source || '', sourceUrl: record.__sourceUrl || '', raw: record };
   Object.keys(CONFIG.aliases).forEach((field) => { row[field] = getAliasedValue(record, CONFIG.aliases[field]); });
   row.uf = normalizeUf(row.uf || extractUfFromText(`${row.cidade} ${row.cliente}`)); row.region = CONFIG.regionByUf[row.uf] || 'Sem região';
-  row.dataProgramadaDate = parseDate(row.dataProgramada); row.agendaDate = parseDate(row.agenda); row.previsaoEntregaDate = parseDate(row.previsaoEntrega); row.chegadaClienteDate = parseDate(row.chegadaCliente); row.referenceDate = row.dataProgramadaDate || row.agendaDate || row.previsaoEntregaDate || row.chegadaClienteDate;
+  row.dataProgramadaDate = parseDate(row.dataProgramada); row.agendaDate = parseDate(row.agenda); row.previsaoEntregaDate = parseDate(row.previsaoEntrega); row.chegadaClienteDate = parseDate(row.chegadaCliente); row.emissaoDate = parseDate(row.emissao); row.saidaDate = parseDate(row.saida); row.referenceDate = row.dataProgramadaDate || row.saidaDate || row.agendaDate || row.previsaoEntregaDate || row.chegadaClienteDate || row.emissaoDate;
   const normalizedStatus = normalizeText(row.status || row.faturamento || '');
   row.delivered = isDelivered(normalizedStatus); row.waitingUnload = isWaitingUnload(normalizedStatus); row.transit = isTransit(normalizedStatus, row); row.open = !row.delivered && !row.waitingUnload;
   row.occurrenceText = getOccurrenceText(row); row.hasOccurrence = isMeaningfulOccurrence(row.occurrenceText); row.returnText = getReturnText(row); row.hasReturn = isMeaningfulReturn(row.returnText);
