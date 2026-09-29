@@ -51,7 +51,7 @@ const CONFIG = {
 const STATE = {
   rawRecords: [], records: [], filtered: [], errors: [], isDemo: false, isLoading: false,
   lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', mapStatus: 'all', weather: {},
-  filters: { from: '', to: '', source: 'all', uf: 'all', status: 'all', search: '' }
+  filters: { from: '', to: '', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
 const pendingGviz = new Map();
@@ -71,11 +71,13 @@ function cacheDom() {
   ['refreshBtn','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
+  DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
   DOM.panels = Array.from(document.querySelectorAll('[data-tab-panel]'));
 }
 
 function bindEvents() {
   DOM.navTabs.forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
+  DOM.sourceTabs.forEach((button) => button.addEventListener('click', () => selectSourceTab(button.dataset.source)));
   DOM.refreshBtn.addEventListener('click', () => loadData({ manual: true }));
   DOM.clearFiltersBtn.addEventListener('click', clearFilters);
   DOM.exportCsvBtn.addEventListener('click', exportCsv);
@@ -105,6 +107,13 @@ function activateTab(tab) {
   STATE.activeTab = tab;
   DOM.navTabs.forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   DOM.panels.forEach((panel) => panel.classList.toggle('active', panel.dataset.tabPanel === tab));
+}
+
+function selectSourceTab(source) {
+  const selected = source || CONFIG.sources[0].short;
+  DOM.filterSource.value = selected;
+  DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === selected));
+  onFilterChange();
 }
 
 async function loadData({ manual = false } = {}) {
@@ -347,10 +356,18 @@ function isMeaningfulOccurrence(value) { const n = normalizeText(value); return 
 function isMeaningfulReturn(value) { const n = normalizeText(value); return Boolean(n && !/(^nao$|^não$|sem devolucao|sem devolução|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
 function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
 
-function populateSourceFilter() { DOM.filterSource.innerHTML = '<option value="all">Todas</option>' + CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join(''); }
+function populateSourceFilter() {
+  DOM.filterSource.innerHTML = CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join('');
+  DOM.filterSource.value = STATE.filters.source || CONFIG.sources[0].short;
+  DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value));
+}
 function populateDynamicFilters() { const currentUf = DOM.filterUf.value || 'all'; const ufs = [...new Set(STATE.records.map((row) => row.uf).filter(Boolean))].sort(); DOM.filterUf.innerHTML = '<option value="all">Todas</option>' + ufs.map((uf) => `<option value="${escapeHtml(uf)}">${escapeHtml(uf)}</option>`).join(''); DOM.filterUf.value = ufs.includes(currentUf) ? currentUf : 'all'; STATE.filters.uf = DOM.filterUf.value; }
-function onFilterChange() { STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, source: DOM.filterSource.value, uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() }; applyFiltersAndRender(); }
-function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterSource.value = 'all'; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; onFilterChange(); }
+function onFilterChange() {
+  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, source: DOM.filterSource.value || CONFIG.sources[0].short, uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
+  DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === STATE.filters.source));
+  applyFiltersAndRender();
+}
+function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
 function applyFiltersAndRender() { STATE.filtered = STATE.records.filter((row) => matchesFilters(row, STATE.filters)); renderAll(); }
 function matchesFilters(row, filters) {
   if (filters.source !== 'all' && row.source !== filters.source) return false; if (filters.uf !== 'all' && row.uf !== filters.uf) return false;
@@ -389,22 +406,27 @@ function kpiCard(title, value, subtitle, icon, variant = '', filterStatus = null
   return `<article class="kpi-card ${escapeHtml(variant)} ${filterStatus ? 'kpi-clickable' : ''}" ${action} title="${filterStatus ? 'Clique para filtrar' : 'Indicador do recorte atual'}"><div class="kpi-top"><span class="kpi-title">${escapeHtml(title)}</span><span class="kpi-icon">${escapeHtml(icon)}</span></div><div class="kpi-value">${escapeHtml(String(value))}</div><div class="kpi-subtitle">${escapeHtml(subtitle)}</div></article>`;
 }
 function renderSourcePanels() {
-  const html = CONFIG.sources.map((source) => {
-    const rows = STATE.filtered.filter((row) => row.source === source.short); const m = computeMetrics(rows);
-    return `<div class="source-card" style="border-color:${source.color}44"><strong>${escapeHtml(source.short)}</strong><div class="source-metrics"><span><b>${formatInteger(rows.length)}</b> registros</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.delivered)}</b> entregues</span><span><b>${m.ontimeRate}%</b> ONTIME</span></div></div>`;
-  }).join('');
-  document.getElementById('sourcePanels').innerHTML = html || emptyState('Nenhuma origem no recorte.');
+  const source = CONFIG.sources.find((item) => item.short === STATE.filters.source) || CONFIG.sources[0];
+  const rows = STATE.filtered;
+  const m = computeMetrics(rows);
+  const html = `<div class="source-card selected-source" style="border-color:${source.color}44"><strong>${escapeHtml(source.short)}</strong><div class="source-metrics"><span><b>${formatInteger(rows.length)}</b> registros</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.delivered)}</b> entregues</span><span><b>${m.ontimeRate}%</b> ONTIME unidade</span></div></div>`;
+  document.getElementById('sourcePanels').innerHTML = rows.length ? html : emptyState('Nenhuma informação para a unidade selecionada no recorte.');
 }
 
 function renderPerformance() {
   const rows = STATE.filtered, eligible = rows.filter((row) => row.performanceEligible);
+  const consolidatedRows = STATE.records.filter((row) => matchesFilters(row, { ...STATE.filters, source: 'all' }));
+  const consolidatedEligible = consolidatedRows.filter((row) => row.performanceEligible);
+  const consolidatedOntime = consolidatedEligible.filter((row) => row.ontimeStatus === true).length;
+  const consolidatedRate = consolidatedEligible.length ? Math.round((consolidatedOntime / consolidatedEligible.length) * 100) : 0;
   const ontime = eligible.filter((row) => row.ontimeStatus === true).length;
   const late = eligible.filter((row) => row.ontimeStatus === false || row.delayed).length;
   const notCountedTransit = rows.filter((row) => row.transit && !row.performanceEligible && !row.delayed).length;
   const rate = eligible.length ? Math.round((ontime / eligible.length) * 100) : 0;
   document.getElementById('performanceKpis').innerHTML = [
-    kpiCard('Notas contabilizadas', formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', 'Σ'),
-    kpiCard('Dentro do prazo', formatInteger(ontime), `${rate}% de aderência`, '✓', 'success'),
+    kpiCard('Percentual consolidado', `${consolidatedRate}%`, `BA + SP • ${formatInteger(consolidatedEligible.length)} notas elegíveis`, '◎', consolidatedRate >= 90 ? 'success' : consolidatedRate >= 75 ? 'warn' : 'danger'),
+    kpiCard(`Notas ${STATE.filters.source}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', 'Σ'),
+    kpiCard('Dentro do prazo', formatInteger(ontime), `${rate}% de aderência da unidade`, '✓', 'success'),
     kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base ONTIME`, '⚠', 'danger', 'delayed'),
     kpiCard('Em trânsito não contado', formatInteger(notCountedTransit), 'Dentro do prazo ou sem fechamento', '🚚', 'info', 'transit')
   ].join('');
@@ -466,10 +488,44 @@ function renderMap() {
   const regionMetrics = Object.fromEntries(regions.map((region) => [region, computeRegionMetrics(mapRows.filter((row) => row.region === region))]));
   const maxOpen = Math.max(1, ...Object.values(regionMetrics).map((metric) => metric.open));
   const selected = STATE.selectedRegion;
-  const paths = { Norte: 'M105 70 L245 42 L330 88 L323 174 L255 230 L183 212 L133 258 L54 220 L45 126 Z', Nordeste: 'M334 92 L438 105 L488 178 L464 260 L393 285 L334 242 L303 177 Z', 'Centro-Oeste': 'M190 232 L285 200 L352 252 L337 350 L252 378 L174 328 Z', Sudeste: 'M345 314 L433 290 L486 340 L456 414 L365 430 L318 374 Z', Sul: 'M318 406 L390 438 L378 505 L290 492 L250 430 Z' };
-  const labelPos = { Norte: [188, 145], Nordeste: [402, 195], 'Centro-Oeste': [265, 300], Sudeste: [405, 365], Sul: [330, 458] };
-  const colors = { Norte: '#1398d6', Nordeste: '#ffb020', 'Centro-Oeste': '#9b7cff', Sudeste: '#e62e2d', Sul: '#2ed47a' };
-  document.getElementById('brazilMap').innerHTML = `<svg viewBox="0 0 540 540" role="img" aria-label="Mapa do Brasil por regiões"><defs><linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#11375d"/><stop offset="1" stop-color="#071628"/></linearGradient></defs><rect x="8" y="8" width="524" height="524" rx="34" fill="url(#ocean)" opacity=".42"/>${regions.map((region) => { const metric = regionMetrics[region]; const opacity = 0.42 + (metric.open / maxOpen) * 0.45; return `<path class="map-region ${selected === region ? 'active' : ''}" data-region="${region}" d="${paths[region]}" fill="${colors[region]}" fill-opacity="${opacity.toFixed(2)}"></path>`; }).join('')}${regions.map((region) => `<text class="map-label" x="${labelPos[region][0]}" y="${labelPos[region][1]}">${region}</text>`).join('')}</svg>`;
+  const outline = 'M305 42 C282 44 266 56 245 59 C219 63 205 82 187 98 C166 117 139 110 122 131 C105 152 106 178 88 197 C69 217 47 229 51 258 C55 289 82 304 106 319 C132 335 138 360 130 389 C121 423 142 454 176 463 C204 471 222 491 243 509 C272 535 313 535 338 509 C356 491 379 478 407 484 C443 491 476 466 483 430 C488 405 503 388 524 372 C558 346 575 308 566 268 C558 232 530 212 513 182 C497 154 496 121 471 98 C446 74 411 73 380 63 C354 55 334 39 305 42 Z';
+  const regionPaths = {
+    Norte: 'M52 255 C57 222 82 207 99 188 C115 169 112 145 130 128 C148 111 169 119 190 99 C207 83 221 63 247 59 C269 56 284 44 306 42 C335 39 354 55 380 63 L382 153 L342 214 L294 252 L224 246 L157 308 L106 320 C82 305 56 286 52 255 Z',
+    Nordeste: 'M382 66 C413 73 446 75 471 98 C496 121 497 154 513 182 C530 212 558 232 566 268 C575 308 558 346 524 372 L469 345 L438 288 L392 260 L343 215 L382 153 Z',
+    'Centro-Oeste': 'M157 308 L224 246 L294 252 L343 215 L392 260 L394 334 L351 392 L286 421 L210 395 L130 389 C138 360 132 335 106 320 Z',
+    Sudeste: 'M351 392 L394 334 L469 345 L524 372 C503 388 488 405 483 430 C476 466 443 491 407 484 C379 478 356 491 338 509 L286 421 Z',
+    Sul: 'M210 395 L286 421 L338 509 C313 535 272 535 243 509 C222 491 204 471 176 463 C154 457 137 441 130 421 Z'
+  };
+  const labelPos = { Norte: [218, 165], Nordeste: [455, 214], 'Centro-Oeste': [285, 335], Sudeste: [419, 418], Sul: [245, 462] };
+  const colors = { Norte: '#2ec4e6', Nordeste: '#ffb22c', 'Centro-Oeste': '#8d62db', Sudeste: '#ee3f86', Sul: '#38de68' };
+  document.getElementById('brazilMap').innerHTML = `
+    <svg viewBox="0 0 620 590" role="img" aria-label="Mapa do Brasil por regiões">
+      <defs>
+        <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8fbff"/><stop offset="1" stop-color="#eef4fb"/></linearGradient>
+        <clipPath id="brasilClip"><path d="${outline}"></path></clipPath>
+      </defs>
+      <rect x="10" y="10" width="600" height="570" rx="18" fill="url(#mapBg)"/>
+      <g clip-path="url(#brasilClip)">
+        ${regions.map((region) => {
+          const metric = regionMetrics[region];
+          const opacity = 0.62 + (metric.open / maxOpen) * 0.28;
+          return `<path class="map-region ${selected === region ? 'active' : ''}" data-region="${region}" d="${regionPaths[region]}" fill="${colors[region]}" fill-opacity="${opacity.toFixed(2)}"></path>`;
+        }).join('')}
+        <g class="state-lines" opacity="0.75">
+          <path d="M132 129 C155 172 190 192 223 246"></path>
+          <path d="M246 59 C260 110 285 163 294 252"></path>
+          <path d="M380 63 C370 117 365 174 343 215"></path>
+          <path d="M513 182 C475 196 430 213 392 260"></path>
+          <path d="M566 268 C513 279 467 302 394 334"></path>
+          <path d="M106 320 C159 329 214 350 286 421"></path>
+          <path d="M130 389 C196 392 252 401 351 392"></path>
+          <path d="M338 509 C357 463 382 431 469 345"></path>
+          <path d="M210 395 C219 431 227 470 243 509"></path>
+        </g>
+      </g>
+      <path class="brazil-outline" d="${outline}"></path>
+      ${regions.map((region) => `<text class="map-label" x="${labelPos[region][0]}" y="${labelPos[region][1]}">${region.toUpperCase()}</text>`).join('')}
+    </svg>`;
   const map = document.getElementById('brazilMap');
   map.querySelectorAll('.map-region').forEach((path) => {
     path.addEventListener('mousemove', (event) => showMapTooltip(event, path.dataset.region, regionMetrics[path.dataset.region]));

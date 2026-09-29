@@ -1867,3 +1867,144 @@ h3 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Ajustes solicitados: logo oficial branca, abas Filial/Matriz e mapa Brasil */
+.sidebar-brand {
+  justify-content: center;
+}
+
+.sidebar-logo {
+  width: 180px;
+  max-height: 42px;
+  object-fit: contain;
+}
+
+.topbar-title .brand-logo {
+  width: 188px;
+  height: 58px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #ee3f86 0%, #9a58d8 100%);
+  object-fit: contain;
+  box-shadow: 0 10px 22px rgba(238, 63, 134, 0.18);
+}
+
+.unit-tabs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  margin-bottom: 14px;
+  border: 1px solid #edf0f5;
+  border-radius: 10px;
+  background: #f7f9fd;
+}
+
+.unit-tab {
+  min-width: 132px;
+  min-height: 36px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 7px;
+  color: #7c8797;
+  background: transparent;
+  font-weight: 800;
+  transition: 0.18s ease;
+}
+
+.unit-tab:hover {
+  color: #ee3f86;
+  background: #fff;
+}
+
+.unit-tab.active {
+  color: #fff;
+  background: linear-gradient(100deg, #ee3f86 0%, #9a58d8 100%);
+  box-shadow: 0 8px 18px rgba(238, 63, 134, 0.2);
+}
+
+.source-select-label {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+}
+
+.filter-grid {
+  grid-template-columns: repeat(4, minmax(130px, 1fr)) minmax(260px, 1.8fr);
+}
+
+.source-panels {
+  grid-template-columns: 1fr;
+}
+
+.source-card.selected-source {
+  border-width: 2px;
+}
+
+.map-card {
+  min-height: 610px;
+}
+
+.brazil-map {
+  min-height: 570px;
+}
+
+.brazil-map svg {
+  min-height: 570px;
+}
+
+.brazil-outline {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 5;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 14px 22px rgba(41, 57, 84, 0.16));
+}
+
+.state-lines path,
+.state-lines line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.64);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.map-region {
+  stroke: rgba(255, 255, 255, 0.86);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.map-label {
+  font-size: 15px;
+  letter-spacing: .04em;
+}
+
+@media (max-width: 1280px) {
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr)) minmax(240px, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .unit-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .unit-tab {
+    width: 100%;
+  }
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+  .topbar-title .brand-logo {
+    width: 170px;
+  }
+}
+
+.sidebar-brand span {
+  display: none;
+}
