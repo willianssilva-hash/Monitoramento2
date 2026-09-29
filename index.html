@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#071426" />
+  <title>Torre de Controle - Monitoramento</title>
+  <link rel="icon" href="assets/logo-colormaq.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegação lateral">
+      <div class="sidebar-brand">
+        <img src="assets/logo-colormaq.svg" alt="Colormaq" class="sidebar-logo" />
+        <span>Torre<br><strong>Controle</strong></span>
+      </div>
+
+      <nav class="nav-tabs" aria-label="Categorias do painel">
+        <button class="nav-tab active" data-tab="general" type="button">
+          <span class="nav-icon">▣</span>
+          <span>Acompanhamento Geral</span>
+        </button>
+        <button class="nav-tab" data-tab="performance" type="button">
+          <span class="nav-icon">◉</span>
+          <span>Performance de Entregas</span>
+        </button>
+        <button class="nav-tab" data-tab="occurrences" type="button">
+          <span class="nav-icon">⚠</span>
+          <span>Ocorrências</span>
+        </button>
+        <button class="nav-tab" data-tab="returns" type="button">
+          <span class="nav-icon">↩</span>
+          <span>Devoluções</span>
+        </button>
+        <button class="nav-tab" data-tab="map" type="button">
+          <span class="nav-icon">⌖</span>
+          <span>Mapa</span>
+        </button>
+      </nav>
+
+      <section class="monitor-panel" aria-label="Monitor IA">
+        <div class="monitor-header">
+          <div>
+            <span class="pulse-dot"></span>
+            <strong>Monitor IA</strong>
+          </div>
+          <small>online</small>
+        </div>
+        <div class="monitor-messages" id="monitorMessages" aria-live="polite"></div>
+        <div class="monitor-chips" aria-label="Perguntas rápidas">
+          <button type="button" data-question="Gerar relatório consolidado do período selecionado">Relatório</button>
+          <button type="button" data-question="Quais cargas estão em atraso?">Atrasos</button>
+          <button type="button" data-question="Onde encontro as devoluções por motivo?">Guia</button>
+        </div>
+        <form class="monitor-form" id="monitorForm">
+          <input id="monitorInput" type="text" autocomplete="off" placeholder="Pergunte sobre cargas, NFs, atrasos..." aria-label="Mensagem para o Monitor IA" />
+          <button type="submit" aria-label="Enviar pergunta">➤</button>
+        </form>
+      </section>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <div class="topbar-title">
+          <img src="assets/logo-colormaq.svg" alt="Logo Colormaq" class="brand-logo" />
+          <div>
+            <p class="eyebrow">Logística • Torre de Controle</p>
+            <h1>Torre de Controle - Monitoramento</h1>
+            <p class="subtitle">Filial BA + Matriz SP • atualização automática a cada 10 minutos</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="update-status" title="Status da última atualização">
+            <span class="status-dot" id="loadDot"></span>
+            <span id="lastUpdate">Aguardando dados...</span>
+            <small id="nextUpdate">próxima: --:--</small>
+          </div>
+          <button class="btn btn-primary" id="refreshBtn" type="button">⟳ Atualizar agora</button>
+        </div>
+      </header>
+
+      <section class="filters-card" aria-label="Filtros do painel">
+        <div class="filter-grid">
+          <label>
+            <span>Data inicial</span>
+            <input type="date" id="filterFrom" />
+          </label>
+          <label>
+            <span>Data final</span>
+            <input type="date" id="filterTo" />
+          </label>
+          <label>
+            <span>Origem</span>
+            <select id="filterSource">
+              <option value="all">Todas</option>
+            </select>
+          </label>
+          <label>
+            <span>UF</span>
+            <select id="filterUf">
+              <option value="all">Todas</option>
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="filterStatus">
+              <option value="all">Todos</option>
+              <option value="delayed">Atrasadas / fora do prazo</option>
+              <option value="transit">Em trânsito</option>
+              <option value="delivered">Finalizadas / entregues</option>
+              <option value="waiting">Aguardando descarga</option>
+              <option value="occurrence">Com ocorrência</option>
+              <option value="return">Com devolução</option>
+              <option value="open">Em aberto</option>
+            </select>
+          </label>
+          <label class="search-label">
+            <span>Busca rápida</span>
+            <input type="search" id="filterSearch" placeholder="NF, carga, cliente, placa, motorista..." />
+          </label>
+        </div>
+        <div class="filter-actions">
+          <button class="btn" id="clearFiltersBtn" type="button">Limpar filtros</button>
+          <button class="btn" id="exportCsvBtn" type="button">Exportar CSV</button>
+          <button class="btn" id="exportReportBtn" type="button">Gerar relatório rápido</button>
+          <span class="filter-counter" id="filterCounter">0 registros no recorte</span>
+        </div>
+      </section>
+
+      <div class="alert-banner hidden" id="alertBanner" role="status"></div>
+
+      <main class="dashboard-content">
+        <section class="tab-panel active" id="tab-general" data-tab-panel="general">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Visão executiva</p>
+              <h2>Acompanhamento Geral</h2>
+            </div>
+            <p>Cartões, gráficos e tabelas interativas para visualizar cargas, notas, veículos e status.</p>
+          </div>
+
+          <div class="kpi-grid" id="generalKpis"></div>
+
+          <div class="content-grid two-columns">
+            <article class="panel-card">
+              <div class="panel-header">
+                <div>
+                  <h3>Status operacional</h3>
+                  <small>Clique nas barras para filtrar.</small>
+                </div>
+              </div>
+              <div id="statusChart" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header">
+                <div>
+                  <h3>Distribuição por UF</h3>
+                  <small>Top UFs no período selecionado.</small>
+                </div>
+              </div>
+              <div id="ufChart" class="bar-list"></div>
+            </article>
+          </div>
+
+          <div class="content-grid two-columns">
+            <article class="panel-card">
+              <div class="panel-header">
+                <div>
+                  <h3>Filiais monitoradas</h3>
+                  <small>Comparativo BA x SP.</small>
+                </div>
+              </div>
+              <div id="sourcePanels" class="source-panels"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header">
+                <div>
+                  <h3>Insights automáticos</h3>
+                  <small>Monitor IA analisa o recorte atual.</small>
+                </div>
+              </div>
+              <div id="generalInsights" class="insight-list"></div>
+            </article>
+          </div>
+
+          <article class="panel-card table-card">
+            <div class="panel-header">
+              <div>
+                <h3>Base detalhada de viagens, cargas e NFs</h3>
+                <small>Clique em uma linha para abrir todos os campos da planilha.</small>
+              </div>
+              <button class="btn btn-small" id="scrollTableTop" type="button">Topo da tabela</button>
+            </div>
+            <div id="generalTable" class="table-wrap"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="tab-performance" data-tab-panel="performance">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">SLA / ONTIME</p>
+              <h2>Performance de Entregas</h2>
+            </div>
+            <p>Considera Finalizado, Aguardando Descarga no cliente e Em trânsito fora do prazo. Em trânsito dentro do prazo não entra no denominador.</p>
+          </div>
+
+          <div class="kpi-grid" id="performanceKpis"></div>
+
+          <div class="content-grid three-columns">
+            <article class="panel-card gauge-card">
+              <div class="panel-header">
+                <div>
+                  <h3>% dentro do prazo</h3>
+                  <small>Base ONTIME / previsão x chegada.</small>
+                </div>
+              </div>
+              <div id="ontimeGauge" class="gauge"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Performance por origem</h3></div>
+              <div id="performanceSource" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Performance por UF</h3></div>
+              <div id="performanceUf" class="bar-list"></div>
+            </article>
+          </div>
+
+          <article class="panel-card table-card">
+            <div class="panel-header">
+              <div>
+                <h3>Cargas fora do prazo</h3>
+                <small>Notas com ONTIME fora do prazo ou status em trânsito fora do prazo.</small>
+              </div>
+            </div>
+            <div id="lateTable" class="table-wrap"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="tab-occurrences" data-tab-panel="occurrences">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Gestão de riscos</p>
+              <h2>Ocorrências</h2>
+            </div>
+            <p>Ocorrências por descrição, setor responsável, UF e motoristas com maior recorrência.</p>
+          </div>
+
+          <div class="kpi-grid" id="occurrenceKpis"></div>
+
+          <div class="content-grid three-columns">
+            <article class="panel-card">
+              <div class="panel-header"><h3>Ocorrências por UF</h3></div>
+              <div id="occurrenceUf" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Setor responsável</h3></div>
+              <div id="occurrenceSector" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Motoristas com mais ocorrências</h3></div>
+              <div id="occurrenceDrivers" class="bar-list"></div>
+            </article>
+          </div>
+
+          <div class="content-grid two-columns">
+            <article class="panel-card">
+              <div class="panel-header"><h3>Descrições mais frequentes</h3></div>
+              <div id="occurrenceDescriptions" class="tag-cloud"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Insights de ocorrências</h3></div>
+              <div id="occurrenceInsights" class="insight-list"></div>
+            </article>
+          </div>
+
+          <article class="panel-card table-card">
+            <div class="panel-header"><h3>Lista de ocorrências registradas</h3></div>
+            <div id="occurrenceTable" class="table-wrap"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="tab-returns" data-tab-panel="returns">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Logística reversa</p>
+              <h2>Devoluções</h2>
+            </div>
+            <p>Tipos, motivos, regiões, motoristas e notas devolvidas com observações da planilha.</p>
+          </div>
+
+          <div class="kpi-grid" id="returnKpis"></div>
+
+          <div class="content-grid three-columns">
+            <article class="panel-card">
+              <div class="panel-header"><h3>Tipo de devolução</h3></div>
+              <div id="returnTypes" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Motivos principais</h3></div>
+              <div id="returnReasons" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Regiões com mais devoluções</h3></div>
+              <div id="returnRegions" class="bar-list"></div>
+            </article>
+          </div>
+
+          <div class="content-grid two-columns">
+            <article class="panel-card">
+              <div class="panel-header"><h3>Motoristas com devoluções</h3></div>
+              <div id="returnDrivers" class="bar-list"></div>
+            </article>
+            <article class="panel-card">
+              <div class="panel-header"><h3>Insights de devoluções</h3></div>
+              <div id="returnInsights" class="insight-list"></div>
+            </article>
+          </div>
+
+          <article class="panel-card table-card">
+            <div class="panel-header"><h3>Notas devolvidas e observações</h3></div>
+            <div id="returnTable" class="table-wrap"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="tab-map" data-tab-panel="map">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Mapa operacional</p>
+              <h2>Mapa do Brasil</h2>
+            </div>
+            <p>Passe o mouse para resumo regional. Clique na região para abrir um painel detalhado.</p>
+          </div>
+
+          <div class="map-filters">
+            <label>
+              <span>Região</span>
+              <select id="mapRegionFilter">
+                <option value="all">Todas as regiões</option>
+                <option value="Norte">Norte</option>
+                <option value="Nordeste">Nordeste</option>
+                <option value="Centro-Oeste">Centro-Oeste</option>
+                <option value="Sudeste">Sudeste</option>
+                <option value="Sul">Sul</option>
+              </select>
+            </label>
+            <label>
+              <span>Status no mapa</span>
+              <select id="mapStatusFilter">
+                <option value="all">Todos</option>
+                <option value="open">Entregas em aberto</option>
+                <option value="transit">Veículos em trânsito</option>
+                <option value="delayed">Cargas em atraso</option>
+                <option value="occurrence">Ocorrências</option>
+                <option value="return">Devoluções</option>
+              </select>
+            </label>
+            <button class="btn" id="applyMapRegionGlobal" type="button">Aplicar região aos filtros</button>
+          </div>
+
+          <div class="map-layout">
+            <article class="panel-card map-card">
+              <div id="brazilMap" class="brazil-map" aria-label="Mapa interativo do Brasil por regiões"></div>
+            </article>
+            <aside class="panel-card region-panel">
+              <div class="panel-header">
+                <div>
+                  <h3 id="regionPanelTitle">Todas as regiões</h3>
+                  <small id="regionPanelSub">Resumo do recorte selecionado.</small>
+                </div>
+              </div>
+              <div id="regionSummary" class="region-summary"></div>
+              <div class="panel-header compact"><h3>Monitor IA • Alertas do mapa</h3></div>
+              <div id="mapAiAlerts" class="insight-list"></div>
+            </aside>
+          </div>
+
+          <article class="panel-card table-card">
+            <div class="panel-header"><h3>Detalhes da região selecionada</h3></div>
+            <div id="mapTable" class="table-wrap"></div>
+          </article>
+        </section>
+      </main>
+
+      <footer class="news-ticker" aria-label="News Tracker">
+        <div class="ticker-label">News Tracker</div>
+        <div class="ticker-window">
+          <div class="ticker-track" id="tickerTrack">Carregando informações relevantes do dia...</div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip" role="tooltip"></div>
+
+  <dialog class="detail-modal" id="detailModal">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">Detalhe da viagem / carga / NF</p>
+        <h2 id="modalTitle">Detalhes</h2>
+      </div>
+      <button class="modal-close" id="modalClose" type="button" aria-label="Fechar">×</button>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
