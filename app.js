@@ -65,7 +65,7 @@ let loadSequence = 0;
 const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard. descarga': 'warn', 'Em trânsito': 'info', 'Em aberto': 'purple', Faturado: 'purple' };
 
 window.addEventListener('DOMContentLoaded', () => {
-  cacheDom(); bindEvents(); installGvizFallback(); populateSourceFilter();
+  cacheDom(); initTheme(); bindEvents(); installGvizFallback(); populateSourceFilter();
   addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 10 minutos. Você pode pedir totais, atrasos, ocorrências, devoluções, localização de informações ou um relatório consolidado do recorte filtrado.');
   loadData({ manual: false });
   loadBrazilGeoJson();
@@ -74,7 +74,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function cacheDom() {
-  ['refreshBtn','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab']
+  ['refreshBtn','themeToggle','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
@@ -85,9 +85,13 @@ function bindEvents() {
   DOM.navTabs.forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   DOM.sourceTabs.forEach((button) => button.addEventListener('click', () => selectSourceTab(button.dataset.source)));
   DOM.refreshBtn.addEventListener('click', () => loadData({ manual: true }));
+  if (DOM.themeToggle) DOM.themeToggle.addEventListener('click', toggleTheme);
   DOM.clearFiltersBtn.addEventListener('click', clearFilters);
   DOM.exportCsvBtn.addEventListener('click', exportCsv);
   DOM.exportReportBtn.addEventListener('click', () => { const report = buildQuickReport(); addAiMessage(report); downloadText(`relatorio-monitoramento-${dateForFile(new Date())}.txt`, report); });
+  document.querySelectorAll('.subtab-button').forEach((button) => button.addEventListener('click', () => activatePerformanceView(button.dataset.performanceView)));
+  document.querySelectorAll('.report-option').forEach((input) => input.addEventListener('change', renderReportBuilder));
+  if (DOM.exportDynamicReportBtn) DOM.exportDynamicReportBtn.addEventListener('click', exportDynamicReport);
   [DOM.filterFrom, DOM.filterTo, DOM.filterMonth, DOM.filterSource, DOM.filterUf, DOM.filterStatus].forEach((input) => input.addEventListener('change', onFilterChange));
   DOM.filterSearch.addEventListener('input', debounce(onFilterChange, 180));
   DOM.monitorForm.addEventListener('submit', (event) => { event.preventDefault(); const q = DOM.monitorInput.value.trim(); if (q) { DOM.monitorInput.value = ''; askMonitor(q); } });
@@ -123,6 +127,26 @@ function selectSourceTab(source) {
   DOM.filterSource.value = selected;
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === selected));
   onFilterChange();
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('torre-theme') || 'light';
+  document.body.dataset.theme = saved;
+  updateThemeButton(saved);
+}
+function toggleTheme() {
+  const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.body.dataset.theme = next;
+  localStorage.setItem('torre-theme', next);
+  updateThemeButton(next);
+}
+function updateThemeButton(theme) {
+  if (!DOM.themeToggle) return;
+  DOM.themeToggle.textContent = theme === 'dark' ? '☀ Tema claro' : '☾ Tema escuro';
+}
+function activatePerformanceView(view = 'unit') {
+  document.querySelectorAll('.subtab-button').forEach((button) => button.classList.toggle('active', button.dataset.performanceView === view));
+  document.querySelectorAll('[data-performance-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.performancePanel === view));
 }
 
 async function loadData({ manual = false } = {}) {
@@ -364,7 +388,7 @@ function normalizeRecord(record, index) {
   Object.keys(CONFIG.aliases).forEach((field) => { row[field] = getAliasedValue(record, CONFIG.aliases[field]); });
   row.uf = normalizeUf(row.uf || extractUfFromText(`${row.cidade} ${row.cliente}`)); row.region = CONFIG.regionByUf[row.uf] || 'Sem região';
   row.dataProgramadaDate = parseDate(row.dataProgramada); row.agendaDate = parseDate(row.agenda); row.previsaoEntregaDate = parseDate(row.previsaoEntrega); row.chegadaClienteDate = parseDate(row.chegadaCliente); row.emissaoDate = parseDate(row.emissao); row.saidaDate = parseDate(row.saida); row.referenceDate = row.dataProgramadaDate || row.saidaDate || row.agendaDate || row.previsaoEntregaDate || row.chegadaClienteDate || row.emissaoDate;
-  row.monthNumber = row.referenceDate ? row.referenceDate.getMonth() + 1 : monthNameToNumber(row.mes);
+  row.monthNumber = monthNameToNumber(row.mes) || (row.referenceDate ? row.referenceDate.getMonth() + 1 : null);
   const normalizedStatus = normalizeText(row.status || row.faturamento || '');
   row.delivered = isDelivered(normalizedStatus); row.waitingUnload = isWaitingUnload(normalizedStatus); row.transit = isTransit(normalizedStatus, row); row.open = !row.delivered && !row.waitingUnload;
   row.occurrenceText = getOccurrenceText(row); row.hasOccurrence = isMeaningfulOccurrence(row.occurrenceText); row.returnText = getReturnText(row); row.hasReturn = isMeaningfulReturn(row.returnText);
@@ -438,7 +462,7 @@ function matchesFilters(row, filters) {
   }
   return !(filters.search && !row.searchText.includes(normalizeText(filters.search)));
 }
-function renderAll() { updateHeaderStatus(); renderGeneral(); renderPerformance(); renderOccurrences(); renderReturns(); renderMap(); renderTicker(); }
+function renderAll() { updateHeaderStatus(); renderGeneral(); renderPerformance(); renderOccurrences(); renderReturns(); renderExtras(); renderReportBuilder(); renderMap(); renderTicker(); }
 function updateHeaderStatus() { const count = STATE.filtered.length; DOM.filterCounter.textContent = `${formatInteger(count)} registro${count === 1 ? '' : 's'} no recorte`; if (STATE.lastUpdated) DOM.lastUpdate.textContent = `Atualizado às ${formatTime(STATE.lastUpdated)}`; }
 function setLoadStatus(status, message) { DOM.loadDot.classList.remove('loading', 'error'); if (status === 'loading') DOM.loadDot.classList.add('loading'); if (status === 'error') DOM.loadDot.classList.add('error'); DOM.lastUpdate.textContent = status === 'ok' && STATE.lastUpdated ? `${message} às ${formatTime(STATE.lastUpdated)}` : message; updateCountdown(); }
 function updateCountdown() { if (!STATE.nextRefreshAt) { DOM.nextUpdate.textContent = 'próxima: --:--'; return; } const remaining = Math.max(0, STATE.nextRefreshAt.getTime() - Date.now()); const minutes = Math.floor(remaining / 60000); const seconds = Math.floor((remaining % 60000) / 1000); DOM.nextUpdate.textContent = `próxima: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`; }
@@ -456,9 +480,41 @@ function renderGeneral() {
     kpiCard('Performance ONTIME', `${metrics.ontimeRate}%`, `${formatInteger(metrics.performanceEligible)} notas contabilizadas`, '◉', metrics.ontimeRate >= 90 ? 'success' : metrics.ontimeRate >= 75 ? 'warn' : 'danger', null),
     kpiCard('Agendas D+2', formatInteger(metrics.d2Agendas), `${formatInteger(metrics.todayAgendas)} para hoje`, '📅', 'info', null)
   ].join('');
+  renderScheduleCards();
   renderBarList('statusChart', countBy(STATE.filtered, (row) => row.statusBucket), { empty: 'Nenhum status encontrado no recorte.', colorResolver: (label) => statusColorClass(label), actionResolver: (label) => ({ action: 'statusBucket', value: label }) });
   renderBarList('ufChart', topEntries(countBy(STATE.filtered, (row) => row.uf || 'Sem UF'), 12), { empty: 'Nenhuma UF encontrada no recorte.', actionResolver: (label) => ({ action: 'uf', value: label }) });
   renderSourcePanels(); renderInsights('generalInsights', buildGeneralInsights(STATE.filtered)); renderRecordsTable('generalTable', STATE.filtered, { limit: 300 });
+}
+
+function renderScheduleCards() {
+  const container = document.getElementById('scheduleCards');
+  if (!container) return;
+  const today = new Date();
+  const end = addDays(today, 2);
+  const scheduled = STATE.filtered
+    .filter((row) => {
+      const date = row.agendaDate || row.previsaoEntregaDate;
+      return date && isBetweenDays(date, today, end) && !row.delivered;
+    })
+    .sort((a, b) => (a.agendaDate || a.previsaoEntregaDate) - (b.agendaDate || b.previsaoEntregaDate))
+    .slice(0, 12);
+  if (!scheduled.length) {
+    container.innerHTML = emptyState('Nenhuma entrega agendada para hoje ou D+2 no recorte atual.');
+    return;
+  }
+  container.innerHTML = scheduled.map((row) => {
+    const date = row.agendaDate || row.previsaoEntregaDate;
+    const days = Math.round((startOfDay(date) - startOfDay(today)) / 86400000);
+    const urgency = days <= 0 ? 'critical' : days === 1 ? 'attention' : 'soon';
+    const label = days <= 0 ? 'Hoje' : `D+${days}`;
+    const summary = `<strong>${escapeHtml(label)} • ${escapeHtml(formatDate(date))}</strong><br>${escapeHtml(row.of || row.notaFiscal || 'Carga')} • ${escapeHtml(row.cliente || '-')}<br>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br>${escapeHtml(row.placa || row.motorista || '')}`;
+    return `<article class="schedule-card ${urgency}" data-open-record="${escapeHtml(row.id)}" data-summary="${escapeHtml(summary)}">
+      <span class="schedule-pill">${escapeHtml(label)}</span>
+      <strong>${escapeHtml(row.of || row.notaFiscal || 'Carga')}</strong>
+      <small>${escapeHtml(formatDate(date))} • ${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}</small>
+      <p>${escapeHtml(truncate(row.cliente || '-', 46))}</p>
+    </article>`;
+  }).join('');
 }
 
 function kpiCard(title, value, subtitle, icon, variant = '', filterStatus = null) {
@@ -495,6 +551,26 @@ function renderPerformance() {
   renderPerformanceBars('performanceSource', groupBy(eligible, (row) => row.source || 'Sem origem'), 'origem');
   renderPerformanceBars('performanceUf', groupBy(eligible, (row) => row.uf || 'Sem UF'), 'UF');
   renderRecordsTable('lateTable', rows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false)), { limit: 300, empty: 'Nenhuma carga fora do prazo no recorte.' });
+  renderConsolidatedPerformance(consolidatedRows);
+}
+function renderConsolidatedPerformance(rows) {
+  const eligible = rows.filter((row) => row.performanceEligible);
+  const ontime = eligible.filter((row) => row.ontimeStatus === true).length;
+  const late = eligible.filter((row) => row.ontimeStatus === false || row.delayed).length;
+  const rate = eligible.length ? Math.round((ontime / eligible.length) * 100) : 0;
+  const transit = rows.filter((row) => row.transit && !row.performanceEligible).length;
+  const kpis = document.getElementById('performanceConsolidatedKpis');
+  if (kpis) kpis.innerHTML = [
+    kpiCard('Performance consolidada', `${rate}%`, `${formatInteger(eligible.length)} notas elegíveis BA + SP`, '◎', rate >= 90 ? 'success' : rate >= 75 ? 'warn' : 'danger'),
+    kpiCard('Dentro do prazo', formatInteger(ontime), 'Base consolidada', '✓', 'success'),
+    kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base`, '⚠', 'danger'),
+    kpiCard('Em trânsito não contado', formatInteger(transit), 'Sem fechamento de performance', '🚚', 'info')
+  ].join('');
+  const gauge = document.getElementById('consolidatedGauge');
+  if (gauge) gauge.innerHTML = `<div class="gauge-ring" style="--pct:${rate}"><div class="gauge-content"><strong>${rate}%</strong><span>BA + SP</span></div></div>`;
+  renderPerformanceBars('consolidatedBySource', groupBy(eligible, (row) => row.source || 'Sem origem'), 'origem');
+  renderPerformanceBars('consolidatedByUf', groupBy(eligible, (row) => row.uf || 'Sem UF'), 'UF');
+  renderRecordsTable('consolidatedLateTable', rows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false)), { limit: 300, empty: 'Nenhuma carga fora do prazo no consolidado.' });
 }
 function renderPerformanceBars(containerId, grouped, labelType) {
   const entries = Object.entries(grouped).map(([label, rows]) => {
@@ -543,6 +619,76 @@ function renderReturns() {
   renderBarList('returnDrivers', topEntries(byDriver, 12), { empty: 'Sem motoristas/placas com devolução.', colorResolver: () => 'info' });
   renderInsights('returnInsights', buildReturnInsights(rows));
   renderRecordsTable('returnTable', rows, { limit: 300, empty: 'Nenhuma devolução registrada no recorte.' });
+}
+
+function renderExtras() {
+  const rows = STATE.filtered;
+  const totalValue = rows.reduce((sum, row) => sum + parseBrazilNumber(row.valor), 0);
+  const manifestClosed = rows.filter((row) => /fechado|sim|ok|finaliz/.test(normalizeText(getRawField(row, ['Manifesto'])))).length;
+  const canhotoOk = rows.filter((row) => /sim|digitaliz|ok/.test(normalizeText(getRawField(row, ['Digitalização do Canhoto', 'Digitalizacao do Canhoto', 'Canhoto'])))).length;
+  const cubic = rows.reduce((sum, row) => sum + parseBrazilNumber(getRawField(row, ['M³', 'M3', 'Cubagem'])), 0);
+  const kpi = document.getElementById('extrasKpis');
+  if (kpi) kpi.innerHTML = [
+    kpiCard('Valor NF no recorte', formatCurrency(totalValue), `${formatInteger(rows.length)} registros`, 'R$', 'info'),
+    kpiCard('Cubagem total', cubic ? cubic.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '0', 'm³ calculado da planilha', 'm³', 'success'),
+    kpiCard('Manifestos fechados', formatInteger(manifestClosed), `${percent(manifestClosed, rows.length)} do recorte`, '▣', 'warn'),
+    kpiCard('Canhotos digitalizados', formatInteger(canhotoOk), `${percent(canhotoOk, rows.length)} do recorte`, '✓', 'purple')
+  ].join('');
+  renderBarList('extrasTransporters', topEntries(countBy(rows, (row) => cleanLabel(row.transportadora) || 'Sem transportador'), 12), { empty: 'Sem transportadores.', colorResolver: () => 'info' });
+  renderBarList('extrasCargoTypes', topEntries(countBy(rows, (row) => cleanLabel(row.tpCarga) || 'Sem tipo'), 10), { empty: 'Sem tipos de carga.', colorResolver: () => 'success' });
+  renderBarList('extrasDocuments', topEntries(countBy(rows, (row) => {
+    const manifesto = getRawField(row, ['Manifesto']) || 'Manifesto não informado';
+    const canhoto = getRawField(row, ['Digitalização do Canhoto', 'Digitalizacao do Canhoto', 'Canhoto']) || 'Canhoto não informado';
+    return `${manifesto} / ${canhoto}`;
+  }), 8), { empty: 'Sem dados documentais.', colorResolver: () => 'purple' });
+  renderBarList('extrasClients', topEntries(countBy(rows, (row) => cleanLabel(row.cliente) || 'Sem cliente'), 12), { empty: 'Sem clientes.', colorResolver: () => 'info' });
+  renderInsights('extrasInsights', buildExtrasInsights(rows));
+  renderRecordsTable('extrasTable', rows, { limit: 250, empty: 'Nenhum registro complementar no recorte.' });
+}
+
+function buildExtrasInsights(rows) {
+  const insights = [];
+  const missingCanhoto = rows.filter((row) => !/sim|digitaliz|ok/.test(normalizeText(getRawField(row, ['Digitalização do Canhoto', 'Digitalizacao do Canhoto', 'Canhoto']))));
+  const topTransporter = topLabel(countBy(rows, (row) => cleanLabel(row.transportadora) || 'Sem transportador'));
+  insights.push({ type: 'info', icon: '🚛', text: `Transportador com maior volume: ${topTransporter || 'não identificado'}.` });
+  if (missingCanhoto.length) insights.push({ type: 'warn', icon: '✎', text: `${formatInteger(missingCanhoto.length)} registro(s) sem canhoto digitalizado/confirmado.` });
+  const noManifest = rows.filter((row) => !isPresent(getRawField(row, ['Manifesto']))).length;
+  if (noManifest) insights.push({ type: 'warn', icon: '▣', text: `${formatInteger(noManifest)} registro(s) sem informação de manifesto.` });
+  return insights;
+}
+
+function renderReportBuilder() {
+  const container = document.getElementById('reportPreview');
+  if (!container) return;
+  const selected = Array.from(document.querySelectorAll('.report-option:checked')).map((input) => input.value);
+  const rows = STATE.filtered;
+  const metrics = computeMetrics(rows);
+  const blocks = [];
+  if (selected.includes('kpis')) blocks.push(`<div class="report-block"><h4>Indicadores gerais</h4><div class="mini-kpi-row"><span><b>${formatInteger(metrics.totalNotes)}</b> notas</span><span><b>${formatInteger(metrics.totalLoads)}</b> cargas</span><span><b>${formatInteger(metrics.delayed)}</b> atrasos</span><span><b>${formatInteger(metrics.inTransit)}</b> trânsito</span></div></div>`);
+  if (selected.includes('performance')) blocks.push(`<div class="report-block"><h4>Performance</h4><div class="report-big-number">${metrics.ontimeRate}%</div><p>${formatInteger(metrics.performanceEligible)} notas elegíveis para ONTIME.</p></div>`);
+  if (selected.includes('status')) blocks.push(reportBarBlock('Status operacional', topEntries(countBy(rows, (row) => row.statusBucket), 8)));
+  if (selected.includes('uf')) blocks.push(reportBarBlock('Distribuição por UF', topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 10)));
+  if (selected.includes('schedules')) blocks.push(reportScheduleBlock(rows));
+  if (selected.includes('occurrences')) blocks.push(reportBarBlock('Ocorrências por UF', topEntries(countBy(rows.filter((row) => row.hasOccurrence), (row) => row.uf || 'Sem UF'), 8)));
+  if (selected.includes('returns')) blocks.push(reportBarBlock('Motivos de devolução', topEntries(countBy(rows.filter((row) => row.hasReturn), (row) => cleanLabel(row.returnReason) || 'Sem motivo informado'), 8)));
+  if (selected.includes('transporters')) blocks.push(reportBarBlock('Transportadores', topEntries(countBy(rows, (row) => cleanLabel(row.transportadora) || 'Sem transportador'), 8)));
+  if (selected.includes('details')) blocks.push(`<div class="report-block full"><h4>Detalhes</h4><div class="report-mini-table">${rows.slice(0, 12).map((row) => `<div data-open-record="${escapeHtml(row.id)}"><b>${escapeHtml(row.of || row.notaFiscal || '-')}</b><span>${escapeHtml(truncate(row.cliente || '-', 34))}</span><small>${escapeHtml(row.statusBucket)} • ${escapeHtml(row.uf || '-')}</small></div>`).join('')}</div></div>`);
+  container.innerHTML = blocks.join('') || emptyState('Selecione ao menos uma informação para montar o dashboard.');
+}
+
+function reportBarBlock(title, entries) {
+  if (!entries.length) return `<div class="report-block"><h4>${escapeHtml(title)}</h4><p>Sem dados no recorte.</p></div>`;
+  const max = Math.max(...entries.map(([, value]) => value), 1);
+  return `<div class="report-block"><h4>${escapeHtml(title)}</h4>${entries.map(([label, value]) => `<div class="report-bar" data-summary="${escapeHtml(`<strong>${label}</strong><br>${formatInteger(value)} registro(s)`)}"><span>${escapeHtml(label)}</span><i><em style="width:${Math.max(4, Math.round(value / max * 100))}%"></em></i><b>${formatInteger(value)}</b></div>`).join('')}</div>`;
+}
+function reportScheduleBlock(rows) {
+  const today = new Date();
+  const scheduled = rows.filter((row) => { const d = row.agendaDate || row.previsaoEntregaDate; return d && isBetweenDays(d, today, addDays(today, 2)); }).sort((a,b)=>(a.agendaDate||a.previsaoEntregaDate)-(b.agendaDate||b.previsaoEntregaDate)).slice(0,8);
+  return `<div class="report-block"><h4>Agendas hoje e D+2</h4>${scheduled.length ? scheduled.map((row) => `<div class="report-schedule" data-open-record="${escapeHtml(row.id)}"><b>${escapeHtml(formatDate(row.agendaDate || row.previsaoEntregaDate))}</b><span>${escapeHtml(row.of || row.notaFiscal || '-')} • ${escapeHtml(row.uf || '-')}</span><small>${escapeHtml(truncate(row.cliente || '-', 38))}</small></div>`).join('') : '<p>Sem agendas próximas.</p>'}</div>`;
+}
+function exportDynamicReport() {
+  const text = document.getElementById('reportPreview')?.innerText || buildQuickReport();
+  downloadText(`dashboard-rapido-${dateForFile(new Date())}.txt`, text);
 }
 
 function renderMap() {
@@ -1003,6 +1149,14 @@ function buildDemoRecords() {
   });
 }
 
+function getRawField(row, aliases) { return getAliasedValue(row.raw || {}, aliases); }
+function parseBrazilNumber(value) {
+  if (!isPresent(value)) return 0;
+  const clean = String(value).replace(/R\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+  const number = Number(clean);
+  return Number.isFinite(number) ? number : 0;
+}
+function formatCurrency(value) { return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }); }
 function countBy(rows, getter) { return rows.reduce((acc, row) => { const key = getter(row) || 'Não informado'; acc[key] = (acc[key] || 0) + 1; return acc; }, {}); }
 function groupBy(rows, getter) { return rows.reduce((acc, row) => { const key = getter(row) || 'Não informado'; (acc[key] = acc[key] || []).push(row); return acc; }, {}); }
 function topEntries(obj, limit = 10) { return Object.entries(obj || {}).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))).slice(0, limit); }

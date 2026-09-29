@@ -37,6 +37,14 @@
           <span class="nav-icon">⌖</span>
           <span>Mapa</span>
         </button>
+        <button class="nav-tab" data-tab="extras" type="button">
+          <span class="nav-icon">◇</span>
+          <span>Informações Extras</span>
+        </button>
+        <button class="nav-tab" data-tab="report" type="button">
+          <span class="nav-icon">▤</span>
+          <span>Montar Relatório</span>
+        </button>
       </nav>
 
       <section class="monitor-panel" aria-label="Monitor IA">
@@ -76,6 +84,7 @@
             <span id="lastUpdate">Aguardando dados...</span>
             <small id="nextUpdate">próxima: --:--</small>
           </div>
+          <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema">☾ Tema escuro</button>
           <button class="btn btn-primary" id="refreshBtn" type="button">⟳ Atualizar agora</button>
         </div>
       </header>
@@ -165,6 +174,16 @@
 
           <div class="kpi-grid" id="generalKpis"></div>
 
+          <article class="panel-card schedule-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Entregas agendadas: hoje e D+2</h3>
+                <small>Cards clicáveis com prioridade visual para as próximas entregas.</small>
+              </div>
+            </div>
+            <div id="scheduleCards" class="schedule-cards"></div>
+          </article>
+
           <div class="content-grid two-columns">
             <article class="panel-card">
               <div class="panel-header">
@@ -228,37 +247,66 @@
             <p>Considera Finalizado, Aguardando Descarga no cliente e Em trânsito fora do prazo. Em trânsito dentro do prazo não entra no denominador.</p>
           </div>
 
-          <div class="kpi-grid" id="performanceKpis"></div>
+          <div class="subtab-row" role="tablist" aria-label="Visões de performance">
+            <button class="subtab-button active" type="button" data-performance-view="unit">Unidade selecionada</button>
+            <button class="subtab-button" type="button" data-performance-view="consolidated">Consolidado BA + SP</button>
+          </div>
 
-          <div class="content-grid three-columns">
-            <article class="panel-card gauge-card">
+          <div class="performance-view active" id="performanceUnitView" data-performance-panel="unit">
+            <div class="kpi-grid" id="performanceKpis"></div>
+
+            <div class="content-grid three-columns">
+              <article class="panel-card gauge-card">
+                <div class="panel-header">
+                  <div>
+                    <h3>% dentro do prazo</h3>
+                    <small>Base ONTIME / previsão x chegada.</small>
+                  </div>
+                </div>
+                <div id="ontimeGauge" class="gauge"></div>
+              </article>
+              <article class="panel-card">
+                <div class="panel-header"><h3>Performance por origem</h3></div>
+                <div id="performanceSource" class="bar-list"></div>
+              </article>
+              <article class="panel-card">
+                <div class="panel-header"><h3>Performance por UF</h3></div>
+                <div id="performanceUf" class="bar-list"></div>
+              </article>
+            </div>
+
+            <article class="panel-card table-card">
               <div class="panel-header">
                 <div>
-                  <h3>% dentro do prazo</h3>
-                  <small>Base ONTIME / previsão x chegada.</small>
+                  <h3>Cargas fora do prazo</h3>
+                  <small>Notas com ONTIME fora do prazo ou status em trânsito fora do prazo.</small>
                 </div>
               </div>
-              <div id="ontimeGauge" class="gauge"></div>
-            </article>
-            <article class="panel-card">
-              <div class="panel-header"><h3>Performance por origem</h3></div>
-              <div id="performanceSource" class="bar-list"></div>
-            </article>
-            <article class="panel-card">
-              <div class="panel-header"><h3>Performance por UF</h3></div>
-              <div id="performanceUf" class="bar-list"></div>
+              <div id="lateTable" class="table-wrap"></div>
             </article>
           </div>
 
-          <article class="panel-card table-card">
-            <div class="panel-header">
-              <div>
-                <h3>Cargas fora do prazo</h3>
-                <small>Notas com ONTIME fora do prazo ou status em trânsito fora do prazo.</small>
-              </div>
+          <div class="performance-view" id="performanceConsolidatedView" data-performance-panel="consolidated">
+            <div class="kpi-grid" id="performanceConsolidatedKpis"></div>
+            <div class="content-grid three-columns">
+              <article class="panel-card gauge-card">
+                <div class="panel-header"><div><h3>% consolidado dentro do prazo</h3><small>BA + SP no recorte de período, mês, UF e status.</small></div></div>
+                <div id="consolidatedGauge" class="gauge"></div>
+              </article>
+              <article class="panel-card">
+                <div class="panel-header"><h3>Consolidado por unidade</h3></div>
+                <div id="consolidatedBySource" class="bar-list"></div>
+              </article>
+              <article class="panel-card">
+                <div class="panel-header"><h3>Consolidado por UF</h3></div>
+                <div id="consolidatedByUf" class="bar-list"></div>
+              </article>
             </div>
-            <div id="lateTable" class="table-wrap"></div>
-          </article>
+            <article class="panel-card table-card">
+              <div class="panel-header"><div><h3>Fora do prazo consolidado</h3><small>Todas as unidades, respeitando os filtros gerais exceto aba Filial/Matriz.</small></div></div>
+              <div id="consolidatedLateTable" class="table-wrap"></div>
+            </article>
+          </div>
         </section>
 
         <section class="tab-panel" id="tab-occurrences" data-tab-panel="occurrences">
@@ -345,6 +393,60 @@
             <div class="panel-header"><h3>Notas devolvidas e observações</h3></div>
             <div id="returnTable" class="table-wrap"></div>
           </article>
+        </section>
+
+        <section class="tab-panel" id="tab-extras" data-tab-panel="extras">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Dados complementares</p>
+              <h2>Informações Extras das Cargas</h2>
+            </div>
+            <p>Indicadores operacionais que complementam as demais abas: transportadores, manifesto, canhoto, tipos de carga e valores.</p>
+          </div>
+          <div class="kpi-grid" id="extrasKpis"></div>
+          <div class="content-grid three-columns">
+            <article class="panel-card"><div class="panel-header"><h3>Transportadores</h3></div><div id="extrasTransporters" class="bar-list"></div></article>
+            <article class="panel-card"><div class="panel-header"><h3>Tipos de carga</h3></div><div id="extrasCargoTypes" class="bar-list"></div></article>
+            <article class="panel-card"><div class="panel-header"><h3>Manifesto / Canhoto</h3></div><div id="extrasDocuments" class="bar-list"></div></article>
+          </div>
+          <div class="content-grid two-columns">
+            <article class="panel-card"><div class="panel-header"><h3>Clientes com maior volume</h3></div><div id="extrasClients" class="bar-list"></div></article>
+            <article class="panel-card"><div class="panel-header"><h3>Observações e alertas complementares</h3></div><div id="extrasInsights" class="insight-list"></div></article>
+          </div>
+          <article class="panel-card table-card"><div class="panel-header"><h3>Cargas complementares detalhadas</h3></div><div id="extrasTable" class="table-wrap"></div></article>
+        </section>
+
+        <section class="tab-panel" id="tab-report" data-tab-panel="report">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Dashboard sob demanda</p>
+              <h2>Montar Relatório</h2>
+            </div>
+            <p>Selecione os blocos desejados e o Monitor IA monta o dashboard em tempo real ao lado.</p>
+          </div>
+          <div class="report-builder-layout">
+            <article class="panel-card report-controls">
+              <div class="panel-header"><div><h3>Informações do relatório</h3><small>Marque/desmarque para alterar o dashboard dinâmico.</small></div></div>
+              <div class="report-option-list">
+                <label><input type="checkbox" class="report-option" value="kpis" checked> Indicadores gerais</label>
+                <label><input type="checkbox" class="report-option" value="performance" checked> Performance ONTIME</label>
+                <label><input type="checkbox" class="report-option" value="status" checked> Status operacional</label>
+                <label><input type="checkbox" class="report-option" value="uf"> Distribuição por UF</label>
+                <label><input type="checkbox" class="report-option" value="schedules" checked> Agendas hoje e D+2</label>
+                <label><input type="checkbox" class="report-option" value="occurrences"> Ocorrências</label>
+                <label><input type="checkbox" class="report-option" value="returns"> Devoluções</label>
+                <label><input type="checkbox" class="report-option" value="transporters"> Transportadores</label>
+                <label><input type="checkbox" class="report-option" value="details"> Tabela detalhada</label>
+              </div>
+              <div class="filter-actions report-actions">
+                <button class="btn btn-primary" id="exportDynamicReportBtn" type="button">Exportar relatório</button>
+              </div>
+            </article>
+            <article class="panel-card report-preview-card">
+              <div class="panel-header"><div><h3>Dashboard rápido</h3><small>Prévia interativa gerada em tempo real.</small></div></div>
+              <div id="reportPreview" class="report-preview"></div>
+            </article>
+          </div>
         </section>
 
         <section class="tab-panel" id="tab-map" data-tab-panel="map">
