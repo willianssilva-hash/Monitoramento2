@@ -211,18 +211,21 @@ def rows_to_records(rows: list[list[str]], source: dict) -> list[dict]:
     return records
 
 
-def discover_gids(pubhtml: str, base_pub: str) -> list[str]:
+def discover_gids(pubhtml: str, base_pub: str) -> tuple[list[str], set[str]]:
     gids: list[str] = []
+    target_gids: set[str] = set()
     for match in re.finditer(r"gid=(\d+)", pubhtml):
         gid = match.group(1)
-        window = pubhtml[max(0, match.start() - 500) : match.end() + 500]
-        if "acompanh" in norm(window) and gid not in gids:
-            gids.insert(0, gid)
-        elif gid not in gids:
+        window = pubhtml[max(0, match.start() - 700) : match.end() + 700]
+        is_target = "acompanh" in norm(window)
+        if is_target:
+            target_gids.add(gid)
+        if gid not in gids:
             gids.append(gid)
-    if "0" not in gids:
-        gids.append("0")
-    return gids
+    ordered = [gid for gid in gids if gid in target_gids] + [gid for gid in gids if gid not in target_gids]
+    if "0" not in ordered:
+        ordered.append("0")
+    return ordered, target_gids
 
 
 def candidate_score(records: list[dict], fields: list[str]) -> tuple[int, int, int, int]:
@@ -236,7 +239,7 @@ def candidate_score(records: list[dict], fields: list[str]) -> tuple[int, int, i
 
 def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     errors: list[str] = []
-    candidates_found: list[tuple[tuple[int, int, int, int], str, list[dict], list[str]]] = []
+    candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]] = []
     base = f"https://docs.google.com/spreadsheets/d/e/{source['pubId']}"
     pubhtml_text = ""
 
@@ -245,12 +248,14 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"pubhtml: {exc}")
 
-    gids = discover_gids(pubhtml_text, base) if pubhtml_text else ["0"]
-    csv_urls = [f"{base}/pub?gid={gid}&single=true&output=csv" for gid in gids]
-    csv_urls.append(f"{base}/pub?output=csv")
+    gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
+    csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids]
+    csv_candidates.append((f"{base}/pub?output=csv", ""))
+    if target_gids:
+        errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
 
     seen_urls: set[str] = set()
-    for url in csv_urls:
+    for url, gid in csv_candidates:
         if url in seen_urls:
             continue
         seen_urls.add(url)
@@ -259,7 +264,9 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
             records = rows_to_records(rows, source)
             if records:
                 fields = list(records[0].keys())
-                score = candidate_score(records, fields)
+                base_score = candidate_score(records, fields)
+                target_priority = 1 if gid in target_gids else 0
+                score = (target_priority, *base_score)
                 candidates_found.append((score, f"csv:{url}", records, fields))
                 errors.append(f"candidato {url}: {len(records)} linhas / {len(fields)} campos / score {score}")
             else:
@@ -273,7 +280,8 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
                 records = rows_to_records(table, source)
                 if records:
                     fields = list(records[0].keys())
-                    score = candidate_score(records, fields)
+                    base_score = candidate_score(records, fields)
+                    score = (0, *base_score)
                     candidates_found.append((score, f"html:table-{index}", records, fields))
                     errors.append(f"candidato html table-{index}: {len(records)} linhas / {len(fields)} campos / score {score}")
             if not any(origin.startswith("html:") for _, origin, _, _ in candidates_found):
