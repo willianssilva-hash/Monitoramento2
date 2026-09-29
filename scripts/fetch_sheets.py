@@ -56,6 +56,8 @@ KNOWN_HEADERS = [
 
 def norm(value: object) -> str:
     text = str(value or "")
+    text = re.sub(r"([a-zà-ÿ])([A-ZÀ-Ý])", r"\1 \2", text)
+    text = re.sub(r"([A-ZÀ-Ý]+)([A-ZÀ-Ý][a-zà-ÿ])", r"\1 \2", text)
     text = unicodedata.normalize("NFD", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()

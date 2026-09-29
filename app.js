@@ -8,34 +8,34 @@ const CONFIG = {
     { key: 'matriz-sp', name: 'Monitoramento Matriz SP', short: 'Matriz SP', color: '#e62e2d', pubId: '2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0/pubhtml' }
   ],
   aliases: {
-    dataProgramada: ['Data Progr', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
+    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
     of: ['OF', 'Ordem de Frete', 'Ordem Frete', 'Carga', 'Nº Carga', 'N Carga', 'Numero Carga', 'Número Carga', 'Remessa'],
     agenda: ['Agenda', 'Data Agenda', 'Agendamento', 'Data Agendamento', 'Agenda Cliente'],
     cliente: ['Cliente', 'Destinatário', 'Destinatario', 'Razão Social', 'Razao Social'],
     cidade: ['Cidade', 'Município', 'Municipio', 'Cidade Destino'],
     uf: ['UF', 'Estado', 'UF Destino'],
     tpCarga: ['TP Carga', 'Tipo Carga', 'Tipo de Carga'],
-    tpContratacao: ['TP Contratação', 'TP Contratacao', 'Tipo Contratação', 'Tipo Contratacao'],
-    tpVeiculo: ['TP Veículo', 'TP Veiculo', 'Tipo Veículo', 'Tipo Veiculo'],
+    tpContratacao: ['TP Contratação', 'TP Contratacao', 'Tipo Contratação', 'Tipo Contratacao', 'Contratação', 'Contratacao'],
+    tpVeiculo: ['TP Veículo', 'TP Veiculo', 'Tipo Veículo', 'Tipo Veiculo', 'Veículo', 'Veiculo'],
     placa: ['Placa', 'Cavalo', 'Placa Cavalo', 'Veículo', 'Veiculo'],
     recebVeiculo: ['Receb Veículo', 'Receb Veiculo', 'Recebimento Veículo', 'Recebimento Veiculo', 'Data Receb Veiculo'],
     faturamento: ['Faturamento', 'Status Faturamento', 'Situação Faturamento', 'Situacao Faturamento'],
     emissao: ['Emissão', 'Emissao', 'Data Emissão', 'Data Emissao', 'Dt Emissão', 'Dt Emissao'],
-    saida: ['Saída', 'Saida', 'Data Saída', 'Data Saida', 'Dt Saída', 'Dt Saida', 'Expedição', 'Expedicao'],
+    saida: ['Saída', 'Saida', 'Data Saída', 'Data Saida', 'Data Saída Real', 'Data Saida Real', 'Dt Saída', 'Dt Saida', 'Expedição', 'Expedicao'],
     notaFiscal: ['NF', 'Nota Fiscal', 'NOTA FISCAL', 'Nº NF', 'N NF', 'Nota', 'Notas', 'NFe', 'NFe/CTe'],
     motorista: ['Motorista', 'Nome Motorista', 'Condutor', 'Driver'],
     transportadora: ['Transportadora', 'Transportador', 'Transp', 'Parceiro', 'Operador'],
     status: ['Status', 'Situação', 'Situacao', 'Status Entrega', 'Status da Entrega', 'Acompanhamento', 'Ocorrência Status', 'Status Viagem'],
-    previsaoEntrega: ['Previsão de Entrega', 'Previsao de Entrega', 'Prev Entrega', 'Prev. Entrega', 'Data Prevista Entrega', 'Previsão', 'Previsao'],
+    previsaoEntrega: ['Previsão de Entrega', 'Previsao de Entrega', 'Previsão deEntrega', 'Previsao deEntrega', 'Prev Entrega', 'Prev. Entrega', 'Data Prevista Entrega', 'Previsão', 'Previsao'],
     chegadaCliente: ['Chegada no cliente', 'Chegada Cliente', 'Data Chegada Cliente', 'Chegada', 'Data Entrega', 'Entrega Realizada'],
     ontime: ['ONTIME', 'On Time', 'On-time', 'No Prazo', 'Dentro do Prazo', 'OTD'],
     ocorrencia: ['Ocorrência', 'Ocorrencia', 'Descrição da Ocorrência', 'Descricao da Ocorrencia', 'Descrição Ocorrência', 'Descricao Ocorrencia', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
-    setor: ['Setor Responsável', 'Setor Responsavel', 'Setor', 'Responsável', 'Responsavel', 'Área Responsável', 'Area Responsavel'],
+    setor: ['Setor Responsável', 'Setor Responsavel', 'SetorResponsável', 'SetorResponsavel', 'Setor', 'Responsável', 'Responsavel', 'Área Responsável', 'Area Responsavel'],
     devolucao: ['Devolução', 'Devolucao', 'Dev', 'Retorno', 'Logística Reversa', 'Logistica Reversa'],
-    tipoDevolucao: ['Tipo Devolução', 'Tipo de Devolução', 'Tipo Devolucao', 'Tipo de Devolucao', 'Parcial/Total', 'Devolução Parcial Total'],
-    motivoDevolucao: ['Motivo Devolução', 'Motivo da Devolução', 'Motivo Devolucao', 'Motivo da Devolucao', 'Motivo Dev', 'Motivo'],
-    observacao: ['Observação', 'Observacoes', 'Observações', 'Observacao', 'Obs', 'OBS', 'Comentários', 'Comentarios'],
-    valor: ['Valor', 'Valor NF', 'Valor Nota', 'R$'],
+    tipoDevolucao: ['Tipo Devolução', 'Tipo de Devolução', 'TipoDevolução', 'TipoDevolucao', 'Tipo Devolucao', 'Tipo de Devolucao', 'Parcial/Total', 'Devolução Parcial Total'],
+    motivoDevolucao: ['Motivo Devolução', 'Motivo da Devolução', 'MotivoDevolução', 'MotivoDevolucao', 'Motivo Devolucao', 'Motivo da Devolucao', 'Motivo Dev', 'Motivo'],
+    observacao: ['Observação', 'Observacoes', 'Observações', 'Observacao', 'OBSERVAÇÃO 1', 'Observação 1', 'Obs', 'OBS', 'Comentários', 'Comentarios'],
+    valor: ['Valor', 'Valor NF', 'Valor Nf', 'Valor Nota', 'R$'],
     peso: ['Peso', 'Peso Bruto', 'Cubagem']
   },
   regionByUf: {
@@ -862,7 +862,12 @@ function truncate(value, length) { const str = String(value || ''); return str.l
 function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char])); }
 function csvEscape(value) { const str = String(value == null ? '' : value).replace(/"/g, '""'); return /[";\n\r]/.test(str) ? `"${str}"` : str; }
 function isPresent(value) { return value != null && String(value).trim() !== ''; }
-function normalizeText(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function normalizeText(value) {
+  const separated = String(value || '')
+    .replace(/([a-zà-ÿ])([A-ZÀ-Ý])/g, '$1 $2')
+    .replace(/([A-ZÀ-Ý]+)([A-ZÀ-Ý][a-zà-ÿ])/g, '$1 $2');
+  return separated.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
 function normalizeUf(value) { const text = String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); const match = text.match(/\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/); return match ? match[1] : ''; }
 function extractUfFromText(text) { return normalizeUf(text); }
 function debounce(fn, delay) { let timer; return (...args) => { window.clearTimeout(timer); timer = window.setTimeout(() => fn(...args), delay); }; }
