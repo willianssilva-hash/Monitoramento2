@@ -47,25 +47,7 @@
         </button>
       </nav>
 
-      <section class="monitor-panel" aria-label="Monitor IA">
-        <div class="monitor-header">
-          <div>
-            <span class="pulse-dot"></span>
-            <strong>Monitor IA</strong>
-          </div>
-          <small>online</small>
-        </div>
-        <div class="monitor-messages" id="monitorMessages" aria-live="polite"></div>
-        <div class="monitor-chips" aria-label="Perguntas rápidas">
-          <button type="button" data-question="Gerar relatório consolidado do período selecionado">Relatório</button>
-          <button type="button" data-question="Quais cargas estão em atraso?">Atrasos</button>
-          <button type="button" data-question="Onde encontro as devoluções por motivo?">Guia</button>
-        </div>
-        <form class="monitor-form" id="monitorForm">
-          <input id="monitorInput" type="text" autocomplete="off" placeholder="Pergunte sobre cargas, NFs, atrasos..." aria-label="Mensagem para o Monitor IA" />
-          <button type="submit" aria-label="Enviar pergunta">➤</button>
-        </form>
-      </section>
+
     </aside>
 
     <div class="main-column">
@@ -84,6 +66,15 @@
             <span id="lastUpdate">Aguardando dados...</span>
             <small id="nextUpdate">próxima: --:--</small>
           </div>
+          <label class="palette-control" aria-label="Selecionar paleta de cores">
+            <span>Paleta</span>
+            <select id="colorPalette">
+              <option value="serena">Azul e verde suave</option>
+              <option value="oceano">Oceano claro</option>
+              <option value="menta">Menta confortável</option>
+              <option value="safira">Safira leve</option>
+            </select>
+          </label>
           <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema">☾ Tema escuro</button>
           <button class="btn btn-primary" id="refreshBtn" type="button">⟳ Atualizar agora</button>
         </div>
@@ -154,9 +145,9 @@
         </div>
         <div class="filter-actions">
           <button class="btn" id="clearFiltersBtn" type="button">Limpar filtros</button>
-          <button class="btn" id="exportCsvBtn" type="button">Exportar CSV</button>
+          <button class="btn" id="exportCsvBtn" type="button">Exportar Excel</button>
           <button class="btn" id="exportReportBtn" type="button">Gerar relatório rápido</button>
-          <span class="filter-counter" id="filterCounter">0 registros no recorte</span>
+          <span class="filter-counter" id="filterCounter">0 registros encontrados</span>
         </div>
       </section>
 
@@ -219,7 +210,7 @@
               <div class="panel-header">
                 <div>
                   <h3>Insights automáticos</h3>
-                  <small>Monitor IA analisa o recorte atual.</small>
+                  <small>Monitor IA analisa os filtros atuais.</small>
                 </div>
               </div>
               <div id="generalInsights" class="insight-list"></div>
@@ -290,7 +281,7 @@
             <div class="kpi-grid" id="performanceConsolidatedKpis"></div>
             <div class="content-grid three-columns">
               <article class="panel-card gauge-card">
-                <div class="panel-header"><div><h3>% consolidado dentro do prazo</h3><small>BA + SP no recorte de período, mês, UF e status.</small></div></div>
+                <div class="panel-header"><div><h3>% consolidado dentro do prazo</h3><small>BA + SP por período, mês, UF e status.</small></div></div>
                 <div id="consolidatedGauge" class="gauge"></div>
               </article>
               <article class="panel-card">
@@ -520,6 +511,12 @@
               </article>
 
               <article class="onsupply-card map-heatmap-card">
+                <div class="map-zoom-controls" aria-label="Controles de zoom do mapa">
+                  <button class="map-zoom-btn" id="mapZoomOut" type="button" aria-label="Diminuir zoom">−</button>
+                  <span id="mapZoomLevel">100%</span>
+                  <button class="map-zoom-btn" id="mapZoomIn" type="button" aria-label="Aumentar zoom">+</button>
+                  <button class="map-zoom-btn reset" id="mapZoomReset" type="button">Reset</button>
+                </div>
                 <div id="brazilMap" class="brazil-map heatmap-brazil" aria-label="Mapa de calor operacional do Brasil"></div>
               </article>
 
@@ -534,7 +531,7 @@
                 <div class="panel-header compact">
                   <div>
                     <h3 id="regionPanelTitle">Todas as regiões</h3>
-                    <small id="regionPanelSub">Resumo do recorte selecionado.</small>
+                    <small id="regionPanelSub">Resumo da seleção atual.</small>
                   </div>
                 </div>
                 <div id="regionSummary" class="region-summary"></div>
@@ -566,6 +563,26 @@
     <span class="ai-fab-icon">✦</span>
     <span>Monitor IA</span>
   </button>
+
+  <section class="monitor-panel floating-monitor-panel" aria-label="Monitor IA">
+    <div class="monitor-header">
+      <div>
+        <span class="pulse-dot"></span>
+        <strong>Monitor IA</strong>
+      </div>
+      <small>online</small>
+    </div>
+    <div class="monitor-messages" id="monitorMessages" aria-live="polite"></div>
+    <div class="monitor-chips" aria-label="Perguntas rápidas">
+      <button type="button" data-question="Gerar relatório consolidado do período selecionado">Relatório</button>
+      <button type="button" data-question="Quais cargas estão em atraso?">Atrasos</button>
+      <button type="button" data-question="Onde encontro as devoluções por motivo?">Guia</button>
+    </div>
+    <form class="monitor-form" id="monitorForm">
+      <input id="monitorInput" type="text" autocomplete="off" placeholder="Pergunte sobre cargas, NFs, atrasos..." aria-label="Mensagem para o Monitor IA" />
+      <button type="submit" aria-label="Enviar pergunta">➤</button>
+    </form>
+  </section>
 
   <div class="tooltip" id="tooltip" role="tooltip"></div>
 

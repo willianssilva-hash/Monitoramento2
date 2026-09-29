@@ -3061,3 +3061,452 @@ body[data-theme="dark"] .tooltip {
     width: 100%;
   }
 }
+
+/* Refinamento solicitado: conforto visual, paletas azul/verde, exportação Excel e IA somente flutuante */
+:root {
+  --ticker-height: 72px;
+  --positive: #2fbf71;
+  --positive-strong: #188f58;
+  --positive-soft: #e8f8ef;
+  --negative: #e05252;
+  --negative-strong: #a33434;
+  --negative-soft: #fff0ef;
+  --warning: #f0a43a;
+  --warning-soft: #fff8e8;
+  --info-soft: #eef8ff;
+}
+
+body[data-palette="serena"] {
+  --bg: #f4faf9;
+  --surface: rgba(255, 255, 255, .94);
+  --line: #dcebf0;
+  --text: #102131;
+  --muted: #657b89;
+  --blue: #2a83c6;
+  --blue-2: #6bbde8;
+  --green: #7bdcb5;
+  --cyan: #9adfe3;
+  --positive: #2fbf71;
+  --positive-strong: #168456;
+  --negative: #e05252;
+  --warning: #f0a43a;
+}
+
+body[data-palette="oceano"] {
+  --bg: #f1f8fb;
+  --surface: rgba(255, 255, 255, .95);
+  --line: #d8eaf1;
+  --text: #0f2936;
+  --muted: #63808c;
+  --blue: #167fbd;
+  --blue-2: #63c6e8;
+  --green: #62cfa1;
+  --cyan: #8bdfe5;
+  --positive: #31b77b;
+  --positive-strong: #157a52;
+  --negative: #d95c59;
+  --warning: #eda942;
+}
+
+body[data-palette="menta"] {
+  --bg: #f3fbf6;
+  --surface: rgba(255, 255, 255, .96);
+  --line: #dbeee3;
+  --text: #12271e;
+  --muted: #657c72;
+  --blue: #408ec6;
+  --blue-2: #87c7e8;
+  --green: #88d9a7;
+  --cyan: #9ee8d2;
+  --positive: #26a969;
+  --positive-strong: #0f7446;
+  --negative: #d9534f;
+  --warning: #e3a235;
+}
+
+body[data-palette="safira"] {
+  --bg: #f5f8fc;
+  --surface: rgba(255, 255, 255, .95);
+  --line: #dde8f2;
+  --text: #102033;
+  --muted: #63778c;
+  --blue: #3267c8;
+  --blue-2: #79afe9;
+  --green: #5ecb9a;
+  --cyan: #9fd9e8;
+  --positive: #2fbd68;
+  --positive-strong: #17864b;
+  --negative: #dc4f5b;
+  --warning: #edaa37;
+}
+
+body:not([data-theme="dark"]) {
+  background:
+    radial-gradient(circle at 82% -12%, color-mix(in srgb, var(--green) 22%, transparent), transparent 34rem),
+    radial-gradient(circle at -4% -6%, color-mix(in srgb, var(--blue-2) 22%, transparent), transparent 30rem),
+    linear-gradient(180deg, var(--bg), #edf5f7 100%);
+}
+
+.palette-control {
+  display: grid;
+  gap: 2px;
+  min-width: 172px;
+  padding: 6px 10px;
+  border: 1px solid rgba(42, 131, 198, .12);
+  border-radius: 18px;
+  background: rgba(255,255,255,.76);
+  box-shadow: 0 10px 24px rgba(16, 33, 49, .06);
+}
+
+.palette-control span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.palette-control select {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  font-weight: 850;
+  outline: none;
+}
+
+.filters-card,
+.panel-card,
+.kpi-card,
+.onsupply-card,
+.source-card,
+.report-block,
+.schedule-card,
+.table-wrap,
+.update-status {
+  border-color: color-mix(in srgb, var(--blue) 15%, #ffffff);
+  background: var(--surface);
+}
+
+.sidebar,
+.app-shell,
+.main-column {
+  background-color: transparent;
+}
+
+.nav-tab:hover,
+.nav-tab.active {
+  color: var(--positive-strong);
+  border-color: color-mix(in srgb, var(--positive) 38%, #ffffff);
+  background: color-mix(in srgb, var(--positive) 12%, #ffffff) !important;
+}
+
+.btn-primary,
+.unit-tab.active,
+.sidebar-brand,
+.topbar-title .brand-logo,
+.ticker-label,
+.monitor-form button {
+  background: linear-gradient(135deg, #102131 0%, var(--blue) 54%, var(--green) 100%) !important;
+}
+
+.kpi-card {
+  color: #102131 !important;
+  background: linear-gradient(135deg, #ffffff 0%, color-mix(in srgb, var(--blue-2) 14%, #ffffff) 100%) !important;
+  border: 1px solid color-mix(in srgb, var(--blue) 13%, #ffffff) !important;
+}
+
+.kpi-card .kpi-icon {
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue), var(--green));
+}
+
+.kpi-card.success {
+  color: #0d3a29 !important;
+  background: linear-gradient(135deg, #ffffff 0%, color-mix(in srgb, var(--positive) 18%, #ffffff) 100%) !important;
+}
+
+.kpi-card.success .kpi-icon,
+.badge.success {
+  background: var(--positive-soft) !important;
+  color: var(--positive-strong) !important;
+  border-color: color-mix(in srgb, var(--positive) 28%, #ffffff) !important;
+}
+
+.kpi-card.danger {
+  color: #5d2020 !important;
+  background: linear-gradient(135deg, #ffffff 0%, var(--negative-soft) 100%) !important;
+  border-color: color-mix(in srgb, var(--negative) 34%, #ffffff) !important;
+}
+
+.kpi-card.danger .kpi-icon,
+.badge.danger {
+  color: var(--negative-strong) !important;
+  background: var(--negative-soft) !important;
+  border-color: color-mix(in srgb, var(--negative) 34%, #ffffff) !important;
+}
+
+.kpi-card.warn {
+  color: #64420b !important;
+  background: linear-gradient(135deg, #ffffff 0%, var(--warning-soft) 100%) !important;
+  border-color: color-mix(in srgb, var(--warning) 34%, #ffffff) !important;
+}
+
+.kpi-card.warn .kpi-icon,
+.badge.warn {
+  color: #8a5a10 !important;
+  background: var(--warning-soft) !important;
+  border-color: color-mix(in srgb, var(--warning) 34%, #ffffff) !important;
+}
+
+.kpi-card.info,
+.kpi-card.purple {
+  color: #123047 !important;
+  background: linear-gradient(135deg, #ffffff 0%, var(--info-soft) 100%) !important;
+}
+
+.badge.info,
+.badge.purple {
+  color: var(--blue) !important;
+  background: var(--info-soft) !important;
+  border-color: color-mix(in srgb, var(--blue) 24%, #ffffff) !important;
+}
+
+.bar-fill {
+  background: linear-gradient(90deg, var(--blue), var(--green)) !important;
+}
+
+.bar-fill.success {
+  background: linear-gradient(90deg, var(--positive), #98e8bc) !important;
+}
+
+.bar-fill.warn {
+  background: linear-gradient(90deg, var(--warning), #ffd889) !important;
+}
+
+.bar-fill.danger {
+  background: linear-gradient(90deg, var(--negative), #ffaaa4) !important;
+}
+
+.bar-fill.purple,
+.bar-fill.info {
+  background: linear-gradient(90deg, var(--blue), var(--blue-2)) !important;
+}
+
+.insight.success {
+  border-color: color-mix(in srgb, var(--positive) 24%, #ffffff);
+  background: var(--positive-soft);
+}
+
+.insight.warn {
+  border-color: color-mix(in srgb, var(--warning) 24%, #ffffff);
+  background: var(--warning-soft);
+}
+
+.insight.danger {
+  border-color: color-mix(in srgb, var(--negative) 28%, #ffffff);
+  background: var(--negative-soft);
+}
+
+.floating-monitor-panel {
+  display: none !important;
+}
+
+body.ai-floating-open .floating-monitor-panel {
+  position: fixed;
+  right: 24px;
+  bottom: calc(var(--ticker-height) + 88px);
+  z-index: 70;
+  display: flex !important;
+  width: min(440px, calc(100vw - 28px));
+  height: min(660px, calc(100vh - 150px));
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--blue) 20%, #ffffff);
+  box-shadow: 0 28px 80px rgba(16, 33, 49, .28);
+}
+
+.news-ticker {
+  left: calc(var(--sidebar-width) + 18px) !important;
+  right: 18px !important;
+  bottom: 10px !important;
+  height: 56px !important;
+  border: 1px solid color-mix(in srgb, var(--blue) 16%, #ffffff) !important;
+  border-radius: 999px !important;
+  overflow: hidden;
+  background: rgba(255,255,255,.92) !important;
+  box-shadow: 0 18px 38px rgba(16, 33, 49, .12) !important;
+  backdrop-filter: blur(14px);
+}
+
+.ticker-label {
+  min-width: 148px;
+  border-radius: 999px;
+  margin: 7px 0 7px 7px;
+}
+
+.ticker-window {
+  border-radius: 999px;
+}
+
+.ticker-track span::before {
+  display: none !important;
+}
+
+.table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 950;
+  text-align: left;
+}
+
+.table-sort span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.table-sort.active {
+  color: var(--blue);
+}
+
+.map-heatmap-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.map-zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgba(42, 131, 198, .15);
+  border-radius: 999px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 12px 26px rgba(16, 33, 49, .12);
+  backdrop-filter: blur(10px);
+}
+
+.map-zoom-btn {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue), var(--green));
+  font-weight: 950;
+}
+
+.map-zoom-btn.reset {
+  color: var(--text);
+  background: #eef7f8;
+}
+
+#mapZoomLevel {
+  min-width: 48px;
+  text-align: center;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.brazil-map {
+  transform-origin: center center;
+  transition: transform .18s ease;
+  will-change: transform;
+}
+
+.brazil-map.dragging {
+  cursor: grabbing !important;
+  transition: none;
+}
+
+body[data-theme="dark"] .palette-control,
+body[data-theme="dark"] .map-zoom-controls,
+body[data-theme="dark"] .news-ticker {
+  color: #eaf7ff;
+  border-color: rgba(148, 190, 214, .18) !important;
+  background: rgba(8, 25, 37, .94) !important;
+}
+
+body[data-theme="dark"] .palette-control select {
+  color: #eaf7ff;
+}
+
+body[data-theme="dark"] .kpi-card {
+  color: #eaf7ff !important;
+  background: rgba(8, 25, 37, .94) !important;
+}
+
+body[data-theme="dark"] .kpi-card.danger {
+  color: #ffd7d4 !important;
+  background: linear-gradient(135deg, rgba(82, 24, 24, .92), rgba(8, 25, 37, .94)) !important;
+}
+
+body[data-theme="dark"] .kpi-card.success {
+  color: #d8ffea !important;
+  background: linear-gradient(135deg, rgba(17, 86, 57, .92), rgba(8, 25, 37, .94)) !important;
+}
+
+@media (max-width: 980px) {
+  .news-ticker {
+    left: 12px !important;
+    right: 12px !important;
+  }
+  body.ai-floating-open .floating-monitor-panel {
+    right: 14px;
+    bottom: calc(var(--ticker-height) + 82px);
+  }
+}
+
+@media (max-width: 720px) {
+  .palette-control {
+    min-width: 100%;
+  }
+  .map-zoom-controls {
+    top: 8px;
+    right: 8px;
+    transform: scale(.92);
+    transform-origin: right top;
+  }
+}
+
+.kpi-card .kpi-title,
+.kpi-card .kpi-subtitle {
+  color: color-mix(in srgb, var(--text) 60%, #ffffff) !important;
+}
+
+.kpi-card .kpi-value {
+  color: var(--text) !important;
+}
+
+.kpi-card.danger .kpi-title,
+.kpi-card.danger .kpi-subtitle,
+.kpi-card.danger .kpi-value {
+  color: #5d2020 !important;
+}
+
+.kpi-card.success .kpi-title,
+.kpi-card.success .kpi-subtitle,
+.kpi-card.success .kpi-value {
+  color: #0d3a29 !important;
+}
+
+body[data-theme="dark"] .kpi-card .kpi-title,
+body[data-theme="dark"] .kpi-card .kpi-subtitle,
+body[data-theme="dark"] .kpi-card .kpi-value {
+  color: #eaf7ff !important;
+}
