@@ -249,10 +249,18 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
         errors.append(f"pubhtml: {exc}")
 
     gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
-    csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids]
-    csv_candidates.append((f"{base}/pub?output=csv", ""))
     if target_gids:
+        # Para desempenho, quando a publicação informa a aba acompanhamento,
+        # tentamos somente seus gids e o CSV padrão. Isso evita varrer abas de
+        # apoio enormes e mantém o deploy dentro de poucos minutos.
+        gids_to_try = [gid for gid in gids if gid in target_gids]
         errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
+    else:
+        gids_to_try = gids[:4]
+    if "0" not in gids_to_try:
+        gids_to_try.append("0")
+    csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids_to_try]
+    csv_candidates.append((f"{base}/pub?output=csv", ""))
 
     seen_urls: set[str] = set()
     for url, gid in csv_candidates:
