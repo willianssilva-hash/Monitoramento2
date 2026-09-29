@@ -8,7 +8,7 @@ const CONFIG = {
     { key: 'matriz-sp', name: 'Monitoramento Matriz SP', short: 'Matriz SP', color: '#e62e2d', pubId: '2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0/pubhtml' }
   ],
   aliases: {
-    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
+    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Prog De Embarque', 'Data Prog de Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
     of: ['OF', 'Ordem de Frete', 'Ordem Frete', 'Carga', 'Nº Carga', 'N Carga', 'Numero Carga', 'Número Carga', 'Remessa'],
     agenda: ['Agenda', 'Data Agenda', 'Agendamento', 'Data Agendamento', 'Agenda Cliente'],
     cliente: ['Cliente', 'Destinatário', 'Destinatario', 'Razão Social', 'Razao Social'],
@@ -20,7 +20,7 @@ const CONFIG = {
     placa: ['Placa', 'Cavalo', 'Placa Cavalo', 'Veículo', 'Veiculo'],
     recebVeiculo: ['Receb Veículo', 'Receb Veiculo', 'Recebimento Veículo', 'Recebimento Veiculo', 'Data Receb Veiculo'],
     faturamento: ['Faturamento', 'Status Faturamento', 'Situação Faturamento', 'Situacao Faturamento'],
-    emissao: ['Emissão', 'Emissao', 'Data Emissão', 'Data Emissao', 'Dt Emissão', 'Dt Emissao'],
+    emissao: ['Emissão', 'Emissao', 'Data Emissão', 'Data Emissao', 'Data NF', 'Data Nota Fiscal', 'Dt Emissão', 'Dt Emissao'],
     saida: ['Saída', 'Saida', 'Data Saída', 'Data Saida', 'Data Saída Real', 'Data Saida Real', 'Dt Saída', 'Dt Saida', 'Expedição', 'Expedicao'],
     notaFiscal: ['NF', 'Nota Fiscal', 'NOTA FISCAL', 'Nº NF', 'N NF', 'Nota', 'Notas', 'NFe', 'NFe/CTe'],
     motorista: ['Motorista', 'Nome Motorista', 'Condutor', 'Driver'],
@@ -35,7 +35,7 @@ const CONFIG = {
     tipoDevolucao: ['Tipo Devolução', 'Tipo de Devolução', 'TipoDevolução', 'TipoDevolucao', 'Tipo Devolucao', 'Tipo de Devolucao', 'Parcial/Total', 'Devolução Parcial Total'],
     motivoDevolucao: ['Motivo Devolução', 'Motivo da Devolução', 'MotivoDevolução', 'MotivoDevolucao', 'Motivo Devolucao', 'Motivo da Devolucao', 'Motivo Dev', 'Motivo'],
     observacao: ['Observação', 'Observacoes', 'Observações', 'Observacao', 'OBSERVAÇÃO 1', 'Observação 1', 'Obs', 'OBS', 'Comentários', 'Comentarios'],
-    valor: ['Valor', 'Valor NF', 'Valor Nf', 'Valor Nota', 'R$'],
+    valor: ['Valor', 'Valor NF', 'Valor Nf', 'Valor Total NF', 'Valor Nota', 'R$'],
     peso: ['Peso', 'Peso Bruto', 'Cubagem']
   },
   regionByUf: {
