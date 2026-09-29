@@ -8,6 +8,7 @@ const CONFIG = {
     { key: 'matriz-sp', name: 'Monitoramento Matriz SP', short: 'Matriz SP', color: '#e62e2d', pubId: '2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0/pubhtml' }
   ],
   aliases: {
+    mes: ['Mês', 'Mes', 'Mês Referência', 'Mes Referencia'],
     dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Prog De Embarque', 'Data Prog de Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
     of: ['OF', 'Ordem de Frete', 'Ordem Frete', 'Carga', 'Nº Carga', 'N Carga', 'Numero Carga', 'Número Carga', 'Remessa'],
     agenda: ['Agenda', 'Data Agenda', 'Agendamento', 'Data Agendamento', 'Agenda Cliente'],
@@ -53,7 +54,8 @@ const CONFIG = {
 const STATE = {
   rawRecords: [], records: [], filtered: [], errors: [], isDemo: false, isLoading: false,
   lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', mapStatus: 'all', weather: {},
-  filters: { from: '', to: '', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
+  brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '',
+  filters: { from: '', to: '', month: 'all', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
 const pendingGviz = new Map();
@@ -66,12 +68,13 @@ window.addEventListener('DOMContentLoaded', () => {
   cacheDom(); bindEvents(); installGvizFallback(); populateSourceFilter();
   addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 10 minutos. Você pode pedir totais, atrasos, ocorrências, devoluções, localização de informações ou um relatório consolidado do recorte filtrado.');
   loadData({ manual: false });
+  loadBrazilGeoJson();
   window.setInterval(() => loadData({ manual: false }), CONFIG.refreshIntervalMs);
   window.setInterval(updateCountdown, 1000);
 });
 
 function cacheDom() {
-  ['refreshBtn','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal']
+  ['refreshBtn','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
@@ -85,10 +88,13 @@ function bindEvents() {
   DOM.clearFiltersBtn.addEventListener('click', clearFilters);
   DOM.exportCsvBtn.addEventListener('click', exportCsv);
   DOM.exportReportBtn.addEventListener('click', () => { const report = buildQuickReport(); addAiMessage(report); downloadText(`relatorio-monitoramento-${dateForFile(new Date())}.txt`, report); });
-  [DOM.filterFrom, DOM.filterTo, DOM.filterSource, DOM.filterUf, DOM.filterStatus].forEach((input) => input.addEventListener('change', onFilterChange));
+  [DOM.filterFrom, DOM.filterTo, DOM.filterMonth, DOM.filterSource, DOM.filterUf, DOM.filterStatus].forEach((input) => input.addEventListener('change', onFilterChange));
   DOM.filterSearch.addEventListener('input', debounce(onFilterChange, 180));
   DOM.monitorForm.addEventListener('submit', (event) => { event.preventDefault(); const q = DOM.monitorInput.value.trim(); if (q) { DOM.monitorInput.value = ''; askMonitor(q); } });
   document.querySelectorAll('.monitor-chips button').forEach((button) => button.addEventListener('click', () => askMonitor(button.dataset.question || button.textContent)));
+  if (DOM.aiFab) DOM.aiFab.addEventListener('click', () => document.body.classList.toggle('ai-floating-open'));
+  document.body.addEventListener('mousemove', handleSummaryTooltipMove);
+  document.body.addEventListener('mouseout', handleSummaryTooltipOut);
   document.body.addEventListener('click', (event) => {
     const row = event.target.closest('[data-open-record]'); if (row) return openRecordDetail(row.dataset.openRecord);
     const action = event.target.closest('[data-action]'); if (action) handleAction(action.dataset.action, action.dataset.value);
@@ -138,7 +144,7 @@ async function loadData({ manual = false } = {}) {
     STATE.errors = ['Não foi possível carregar as planilhas pelo navegador neste momento. Exibindo base demonstrativa para manter o painel navegável. Verifique se as publicações Google continuam públicas.'];
   }
   STATE.rawRecords = records;
-  STATE.records = records.map(normalizeRecord).filter(Boolean);
+  STATE.records = records.map(normalizeRecord).filter((row) => row && !isRetiraContract(row));
   STATE.lastUpdated = new Date(); STATE.nextRefreshAt = new Date(Date.now() + CONFIG.refreshIntervalMs); STATE.isLoading = false;
   populateDynamicFilters(); applyFiltersAndRender(); fetchWeather();
   if (STATE.errors.length) { setLoadStatus(STATE.isDemo ? 'error' : 'ok', STATE.isDemo ? 'Modo demonstrativo' : 'Atualizado com alertas'); showBanner(STATE.errors.join(' • '), STATE.isDemo ? 'error' : 'warn'); }
@@ -358,9 +364,12 @@ function normalizeRecord(record, index) {
   Object.keys(CONFIG.aliases).forEach((field) => { row[field] = getAliasedValue(record, CONFIG.aliases[field]); });
   row.uf = normalizeUf(row.uf || extractUfFromText(`${row.cidade} ${row.cliente}`)); row.region = CONFIG.regionByUf[row.uf] || 'Sem região';
   row.dataProgramadaDate = parseDate(row.dataProgramada); row.agendaDate = parseDate(row.agenda); row.previsaoEntregaDate = parseDate(row.previsaoEntrega); row.chegadaClienteDate = parseDate(row.chegadaCliente); row.emissaoDate = parseDate(row.emissao); row.saidaDate = parseDate(row.saida); row.referenceDate = row.dataProgramadaDate || row.saidaDate || row.agendaDate || row.previsaoEntregaDate || row.chegadaClienteDate || row.emissaoDate;
+  row.monthNumber = row.referenceDate ? row.referenceDate.getMonth() + 1 : monthNameToNumber(row.mes);
   const normalizedStatus = normalizeText(row.status || row.faturamento || '');
   row.delivered = isDelivered(normalizedStatus); row.waitingUnload = isWaitingUnload(normalizedStatus); row.transit = isTransit(normalizedStatus, row); row.open = !row.delivered && !row.waitingUnload;
   row.occurrenceText = getOccurrenceText(row); row.hasOccurrence = isMeaningfulOccurrence(row.occurrenceText); row.returnText = getReturnText(row); row.hasReturn = isMeaningfulReturn(row.returnText);
+  row.returnType = normalizeReturnType(row);
+  row.returnReason = cleanLabel(row.motivoDevolucao);
   row.ontimeStatus = computeOntimeStatus(row, normalizedStatus); row.performanceEligible = computePerformanceEligible(row, normalizedStatus); row.delayed = computeDelayed(row, normalizedStatus); row.statusBucket = computeStatusBucket(row, normalizedStatus); row.searchText = buildSearchText(row);
   return row;
 }
@@ -395,6 +404,13 @@ function isWaitingUnload(normalizedStatus) { return /(aguardando descarga|descar
 function isTransit(normalizedStatus, row) { return /(transito|trânsito|rota|viagem|a caminho|em entrega|fazendo entrega|em andamento|desloc|carregado|coleta)/.test(normalizedStatus) || (!row.delivered && !row.waitingUnload && (row.placa || row.motorista) && (row.previsaoEntregaDate || row.agendaDate)); }
 function getOccurrenceText(row) { return [row.ocorrencia, row.setor && row.ocorrencia ? `Setor: ${row.setor}` : ''].filter(Boolean).join(' • '); }
 function getReturnText(row) { return [row.devolucao, row.tipoDevolucao, row.motivoDevolucao].filter(Boolean).join(' • '); }
+function isRetiraContract(row) { return /\bretira\b/.test(normalizeText(row && row.tpContratacao)); }
+function normalizeReturnType(row) {
+  const text = normalizeText([row.tipoDevolucao, row.devolucao].filter(Boolean).join(' '));
+  if (/\bparcial\b/.test(text)) return 'Parcial';
+  if (/\btotal\b/.test(text)) return 'Total';
+  return row.hasReturn ? 'Não informado' : '';
+}
 function isMeaningfulOccurrence(value) { const n = normalizeText(value); return Boolean(n && !/(^nao$|^não$|sem ocorrencia|sem ocorrência|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
 function isMeaningfulReturn(value) { const n = normalizeText(value); return Boolean(n && !/(^nao$|^não$|sem devolucao|sem devolução|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
 function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
@@ -406,16 +422,17 @@ function populateSourceFilter() {
 }
 function populateDynamicFilters() { const currentUf = DOM.filterUf.value || 'all'; const ufs = [...new Set(STATE.records.map((row) => row.uf).filter(Boolean))].sort(); DOM.filterUf.innerHTML = '<option value="all">Todas</option>' + ufs.map((uf) => `<option value="${escapeHtml(uf)}">${escapeHtml(uf)}</option>`).join(''); DOM.filterUf.value = ufs.includes(currentUf) ? currentUf : 'all'; STATE.filters.uf = DOM.filterUf.value; }
 function onFilterChange() {
-  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, source: DOM.filterSource.value || CONFIG.sources[0].short, uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
+  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, month: DOM.filterMonth.value || 'all', source: DOM.filterSource.value || CONFIG.sources[0].short, uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === STATE.filters.source));
   applyFiltersAndRender();
 }
-function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
+function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
 function applyFiltersAndRender() { STATE.filtered = STATE.records.filter((row) => matchesFilters(row, STATE.filters)); renderAll(); }
 function matchesFilters(row, filters) {
   if (filters.source !== 'all' && row.source !== filters.source) return false; if (filters.uf !== 'all' && row.uf !== filters.uf) return false;
   if (filters.from) { const from = parseDate(filters.from); if (!row.referenceDate || startOfDay(row.referenceDate) < startOfDay(from)) return false; }
   if (filters.to) { const to = parseDate(filters.to); if (!row.referenceDate || startOfDay(row.referenceDate) > endOfDay(to)) return false; }
+  if (filters.month && filters.month !== 'all' && Number(row.monthNumber) !== Number(filters.month)) return false;
   if (filters.status !== 'all') {
     if (filters.status === 'delayed' && !row.delayed) return false; if (filters.status === 'transit' && !row.transit) return false; if (filters.status === 'delivered' && !row.delivered) return false; if (filters.status === 'waiting' && !row.waitingUnload) return false; if (filters.status === 'occurrence' && !row.hasOccurrence) return false; if (filters.status === 'return' && !row.hasReturn) return false; if (filters.status === 'open' && !row.open) return false;
   }
@@ -446,7 +463,8 @@ function renderGeneral() {
 
 function kpiCard(title, value, subtitle, icon, variant = '', filterStatus = null) {
   const action = filterStatus ? `data-action="filterStatus" data-value="${escapeHtml(filterStatus)}"` : '';
-  return `<article class="kpi-card ${escapeHtml(variant)} ${filterStatus ? 'kpi-clickable' : ''}" ${action} title="${filterStatus ? 'Clique para filtrar' : 'Indicador do recorte atual'}"><div class="kpi-top"><span class="kpi-title">${escapeHtml(title)}</span><span class="kpi-icon">${escapeHtml(icon)}</span></div><div class="kpi-value">${escapeHtml(String(value))}</div><div class="kpi-subtitle">${escapeHtml(subtitle)}</div></article>`;
+  const summary = `<strong>${escapeHtml(title)}</strong><br>${escapeHtml(String(value))}<br><small>${escapeHtml(subtitle)}</small>${filterStatus ? '<br><small>Clique para aplicar filtro.</small>' : ''}`;
+  return `<article class="kpi-card ${escapeHtml(variant)} ${filterStatus ? 'kpi-clickable' : ''}" ${action} data-summary="${escapeHtml(summary)}"><div class="kpi-top"><span class="kpi-title">${escapeHtml(title)}</span><span class="kpi-icon">${escapeHtml(icon)}</span></div><div class="kpi-value">${escapeHtml(String(value))}</div><div class="kpi-subtitle">${escapeHtml(subtitle)}</div></article>`;
 }
 function renderSourcePanels() {
   const source = CONFIG.sources.find((item) => item.short === STATE.filters.source) || CONFIG.sources[0];
@@ -510,14 +528,16 @@ function renderOccurrences() {
 
 function renderReturns() {
   const rows = STATE.filtered.filter((row) => row.hasReturn);
-  const byType = countBy(rows, (row) => cleanLabel(row.tipoDevolucao || row.devolucao) || 'Sem tipo'), byReason = countBy(rows, (row) => cleanLabel(row.motivoDevolucao || row.devolucao) || 'Sem motivo'), byRegion = countBy(rows, (row) => row.region || 'Sem região'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa');
+  const byType = countBy(rows.filter((row) => row.returnType === 'Total' || row.returnType === 'Parcial'), (row) => row.returnType);
+  const byReason = countBy(rows, (row) => cleanLabel(row.returnReason) || 'Sem motivo informado');
+  const byRegion = countBy(rows, (row) => row.region || 'Sem região'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa');
   document.getElementById('returnKpis').innerHTML = [
     kpiCard('Total de devoluções', formatInteger(rows.length), `${percent(rows.length, STATE.filtered.length)} do recorte`, '↩', 'purple', 'return'),
-    kpiCard('Devolução parcial', formatInteger(rows.filter((row) => normalizeText(row.tipoDevolucao).includes('parcial')).length), 'Tipo identificado na planilha', '½', 'info'),
-    kpiCard('Devolução total', formatInteger(rows.filter((row) => normalizeText(row.tipoDevolucao).includes('total')).length), 'Tipo identificado na planilha', '1', 'warn'),
+    kpiCard('Devolução parcial', formatInteger(rows.filter((row) => row.returnType === 'Parcial').length), 'Tipo fiel: Parcial', '½', 'info'),
+    kpiCard('Devolução total', formatInteger(rows.filter((row) => row.returnType === 'Total').length), 'Tipo fiel: Total', '1', 'warn'),
     kpiCard('Com observações', formatInteger(rows.filter((row) => isPresent(row.observacao)).length), 'Notas com OBS para análise', '✎', 'success')
   ].join('');
-  renderBarList('returnTypes', topEntries(byType, 10), { empty: 'Sem tipo de devolução informado.', colorResolver: () => 'purple' });
+  renderBarList('returnTypes', topEntries(byType, 2), { empty: 'Sem tipo Total/Parcial informado.', colorResolver: () => 'purple' });
   renderBarList('returnReasons', topEntries(byReason, 10), { empty: 'Sem motivos de devolução.', colorResolver: () => 'warn' });
   renderBarList('returnRegions', topEntries(byRegion, 10), { empty: 'Sem devoluções por região.', colorResolver: () => 'danger', actionResolver: (label) => ({ action: 'region', value: label }) });
   renderBarList('returnDrivers', topEntries(byDriver, 12), { empty: 'Sem motoristas/placas com devolução.', colorResolver: () => 'info' });
@@ -558,7 +578,85 @@ function renderMap() {
   renderRecordsTable('mapTable', panelRows, { limit: 300, empty: 'Nenhum registro para a região/status selecionado.' });
 }
 
+async function loadBrazilGeoJson() {
+  if (STATE.brazilGeoJson || STATE.brazilGeoLoading) return;
+  STATE.brazilGeoLoading = true;
+  try {
+    const response = await fetch('https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson', { cache: 'force-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    STATE.brazilGeoJson = await response.json();
+    STATE.brazilGeoError = '';
+    if (STATE.activeTab === 'map') renderMap();
+  } catch (error) {
+    STATE.brazilGeoError = error.message || 'Mapa externo indisponível';
+  } finally {
+    STATE.brazilGeoLoading = false;
+  }
+}
+
 function renderHeatmapBrazil(rows, selected) {
+  if (STATE.brazilGeoJson) {
+    renderGeoBrazil(rows, selected);
+    return;
+  }
+  renderSimplifiedBrazil(rows, selected);
+}
+
+function renderGeoBrazil(rows, selected) {
+  const features = STATE.brazilGeoJson.features || [];
+  const ufGroups = groupBy(rows.filter((row) => row.uf), (row) => row.uf);
+  const maxUf = Math.max(1, ...Object.values(ufGroups).map((items) => items.length));
+  const paths = [];
+  const spots = [];
+  const bounds = getGeoBounds(features);
+  features.forEach((feature) => {
+    const uf = getFeatureUf(feature);
+    if (!uf) return;
+    const region = CONFIG.regionByUf[uf] || 'Sem região';
+    const items = ufGroups[uf] || [];
+    const metric = computeRegionMetrics(items);
+    const path = geometryToSvgPath(feature.geometry, bounds);
+    const fill = stateColor(region, selected === region || STATE.filters.uf === uf, items.length, maxUf);
+    paths.push(`<path class="br-state map-region ${selected === region || STATE.filters.uf === uf ? 'active' : ''}" data-uf="${uf}" data-region="${region}" d="${path}" fill="${fill}" data-summary="${escapeHtml(`<strong>${uf} • ${region}</strong><br>${formatInteger(items.length)} registros<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências<br>${formatInteger(metric.returns)} devoluções`)}"></path>`);
+    if (items.length) {
+      const center = featureCentroid(feature.geometry, bounds);
+      const weight = items.length + metric.delayed * 1.6 + metric.occurrences * 1.25 + metric.returns * 1.25;
+      const radius = Math.min(34, 8 + Math.sqrt(weight / maxUf) * 30);
+      spots.push(`<g class="heat-spot geo-heat" data-uf="${uf}" transform="translate(${center.x} ${center.y})"><circle r="${radius}" fill="#00d68f" opacity="0.25"></circle><circle r="${radius * 0.62}" fill="#48ff9b" opacity="0.38"></circle><circle r="${radius * 0.34}" fill="#06141f" opacity="0.62"></circle><text y="4" class="heat-label" text-anchor="middle">${uf}</text></g>`);
+    }
+  });
+  document.getElementById('brazilMap').innerHTML = `
+    <svg viewBox="0 0 620 590" role="img" aria-label="Mapa fiel do Brasil por estados">
+      <defs>
+        <linearGradient id="geoSea" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d9edf4"/><stop offset="1" stop-color="#eef6f8"/></linearGradient>
+        <filter id="geoShadow"><feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#03121c" flood-opacity=".18"/></filter>
+      </defs>
+      <rect x="0" y="0" width="620" height="590" fill="url(#geoSea)" rx="18"></rect>
+      <g class="geo-grid" opacity=".32"><path d="M34 115 C130 76 211 94 289 138 C382 190 458 166 586 112"></path><path d="M24 366 C132 304 239 312 336 361 C437 412 505 377 603 328"></path><path d="M115 12 C142 148 140 300 111 578"></path><path d="M505 10 C468 146 474 312 517 579"></path></g>
+      <g class="geo-brazil" filter="url(#geoShadow)">${paths.join('')}</g>
+      <g class="geo-heat-layer">${spots.join('')}</g>
+      <g class="geo-labels"><text x="424" y="355" class="capital-dot">● BRASÍLIA</text><text x="236" y="150">Manaus</text><text x="388" y="458">São Paulo</text><text x="494" y="318">Recife</text><text x="482" y="381">Salvador</text></g>
+      <g class="heat-legend" transform="translate(414 528)"><rect width="186" height="42" rx="12" fill="rgba(255,255,255,.86)"></rect><circle cx="20" cy="21" r="10" fill="#00d68f" opacity=".45"></circle><circle cx="48" cy="21" r="10" fill="#48ff9b" opacity=".55"></circle><circle cx="76" cy="21" r="10" fill="#06141f" opacity=".7"></circle><text x="98" y="18">Mapa de calor</text><text x="98" y="32">volume e criticidade</text></g>
+    </svg>`;
+  const map = document.getElementById('brazilMap');
+  map.querySelectorAll('.br-state').forEach((path) => {
+    path.addEventListener('mousemove', (event) => {
+      const uf = path.dataset.uf;
+      showUfTooltip(event, uf, rows.filter((row) => row.uf === uf));
+    });
+    path.addEventListener('mouseleave', hideTooltip);
+    path.addEventListener('click', () => { DOM.filterUf.value = path.dataset.uf; onFilterChange(); });
+  });
+  map.querySelectorAll('.heat-spot').forEach((spot) => {
+    const uf = spot.dataset.uf;
+    spot.addEventListener('mousemove', (event) => showUfTooltip(event, uf, rows.filter((row) => row.uf === uf)));
+    spot.addEventListener('mouseleave', hideTooltip);
+    spot.addEventListener('click', () => { DOM.filterUf.value = uf; onFilterChange(); });
+  });
+}
+
+function renderSimplifiedBrazil(rows, selected) {
+
   const regions = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
   const regionMetrics = Object.fromEntries(regions.map((region) => [region, computeRegionMetrics(rows.filter((row) => row.region === region))]));
   const maxOpen = Math.max(1, ...Object.values(regionMetrics).map((metric) => metric.open + metric.delayed + metric.occurrences + metric.returns));
@@ -640,6 +738,54 @@ function renderHeatmapBrazil(rows, selected) {
   });
 }
 
+function getFeatureUf(feature) {
+  const props = feature.properties || {};
+  const raw = props.sigla || props.SIGLA || props.uf || props.UF || props.id || props.name || props.nome || '';
+  const uf = normalizeUf(raw);
+  if (uf) return uf;
+  const name = normalizeText(raw);
+  const byName = { 'acre':'AC', 'alagoas':'AL', 'amapa':'AP', 'amazonas':'AM', 'bahia':'BA', 'ceara':'CE', 'distrito federal':'DF', 'espirito santo':'ES', 'goias':'GO', 'maranhao':'MA', 'mato grosso':'MT', 'mato grosso do sul':'MS', 'minas gerais':'MG', 'para':'PA', 'paraiba':'PB', 'parana':'PR', 'pernambuco':'PE', 'piaui':'PI', 'rio de janeiro':'RJ', 'rio grande do norte':'RN', 'rio grande do sul':'RS', 'rondonia':'RO', 'roraima':'RR', 'santa catarina':'SC', 'sao paulo':'SP', 'sergipe':'SE', 'tocantins':'TO' };
+  return byName[name] || '';
+}
+function getGeoBounds(features) {
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  features.forEach((feature) => eachCoordinate(feature.geometry, ([lon, lat]) => { minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon); minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat); }));
+  return { minLon, maxLon, minLat, maxLat, width: 620, height: 590, pad: 28 };
+}
+function eachCoordinate(geometry, fn) {
+  if (!geometry) return;
+  const walk = (coords) => {
+    if (typeof coords[0] === 'number' && typeof coords[1] === 'number') fn(coords);
+    else coords.forEach(walk);
+  };
+  walk(geometry.coordinates || []);
+}
+function projectGeo([lon, lat], bounds) {
+  const usableW = bounds.width - bounds.pad * 2;
+  const usableH = bounds.height - bounds.pad * 2;
+  const x = bounds.pad + ((lon - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * usableW;
+  const y = bounds.pad + ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * usableH;
+  return { x, y };
+}
+function geometryToSvgPath(geometry, bounds) {
+  const polygonToPath = (polygon) => polygon.map((ring) => ring.map((point, index) => { const p = projectGeo(point, bounds); return `${index ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`; }).join(' ') + ' Z').join(' ');
+  if (!geometry) return '';
+  if (geometry.type === 'Polygon') return polygonToPath(geometry.coordinates);
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.map(polygonToPath).join(' ');
+  return '';
+}
+function featureCentroid(geometry, bounds) {
+  let sx = 0, sy = 0, count = 0;
+  eachCoordinate(geometry, (coord) => { const p = projectGeo(coord, bounds); sx += p.x; sy += p.y; count += 1; });
+  return count ? { x: sx / count, y: sy / count } : { x: 310, y: 295 };
+}
+function stateColor(region, active, count, max) {
+  const palette = { Norte: '#17d686', Nordeste: '#24a9dc', 'Centro-Oeste': '#0d7f73', Sudeste: '#1f4155', Sul: '#75e39b', 'Sem região': '#dfe8ee' };
+  if (!count) return active ? '#78e9b0' : '#e9f0f4';
+  const intensity = Math.min(1, count / Math.max(1, max));
+  return active ? '#00d68f' : palette[region] || `rgba(17, 214, 134, ${0.35 + intensity * 0.5})`;
+}
+
 function speedometerHtml(rate, color) {
   const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
   return `<svg viewBox="0 0 220 132" class="speedometer-svg" aria-label="${safeRate}%">
@@ -689,12 +835,26 @@ function computeRegionMetrics(rows) { return { total: rows.length, open: rows.fi
 function renderRegionSummary(metric) { const items = [['Entregas em aberto', metric.open], ['Veículos em trânsito', metric.transit], ['Fazendo entrega', metric.doingDelivery], ['Cargas em atraso', metric.delayed], ['Ocorrências recentes', metric.occurrences], ['Devoluções', metric.returns], ['Veículos / motoristas', metric.vehicles], ['Agendas hoje', metric.todayAgendas]]; document.getElementById('regionSummary').innerHTML = items.map(([label, value]) => `<div class="region-metric"><span>${escapeHtml(label)}</span><strong>${formatInteger(value)}</strong></div>`).join(''); }
 function showMapTooltip(event, region, metric) { DOM.tooltip.innerHTML = `<strong>${escapeHtml(region)}</strong><br>${formatInteger(metric.open)} entregas em aberto • ${formatInteger(metric.transit)} veículos em trânsito<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências • ${formatInteger(metric.returns)} devoluções`; DOM.tooltip.style.left = `${event.clientX}px`; DOM.tooltip.style.top = `${event.clientY}px`; DOM.tooltip.classList.add('visible'); }
 function hideTooltip() { DOM.tooltip.classList.remove('visible'); }
+function handleSummaryTooltipMove(event) {
+  const element = event.target.closest('[data-summary]');
+  if (!element || element.closest('.map-region, .heat-spot')) return;
+  DOM.tooltip.innerHTML = element.dataset.summary || '';
+  DOM.tooltip.style.left = `${event.clientX}px`;
+  DOM.tooltip.style.top = `${event.clientY}px`;
+  DOM.tooltip.classList.add('visible', 'summary-tooltip');
+}
+function handleSummaryTooltipOut(event) {
+  const element = event.target.closest('[data-summary]');
+  if (!element) return;
+  if (event.relatedTarget && element.contains(event.relatedTarget)) return;
+  DOM.tooltip.classList.remove('visible', 'summary-tooltip');
+}
 
 function renderBarList(containerId, data, options = {}) {
   const container = document.getElementById(containerId); const entries = Array.isArray(data) ? data : Object.entries(data || {});
   if (!entries.length) { container.innerHTML = emptyState(options.empty || 'Sem dados para exibir.'); return; }
   const max = Math.max(...entries.map(([, value]) => typeof value === 'number' ? value : Number(value) || 0), 1);
-  container.innerHTML = entries.map(([label, value]) => { const number = typeof value === 'number' ? value : Number(value) || 0; const width = Math.max(3, Math.round((number / max) * 100)); const cls = options.colorResolver ? options.colorResolver(label, number) : ''; const action = options.actionResolver ? options.actionResolver(label, number) : null; const attrs = action ? `data-action="${escapeHtml(action.action)}" data-value="${escapeHtml(action.value)}"` : ''; return `<div class="bar-row ${action ? 'clickable' : ''}" ${attrs}><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill ${escapeHtml(cls)}" style="width:${width}%"></div></div><div class="bar-value">${formatInteger(number)}</div></div>`; }).join('');
+  container.innerHTML = entries.map(([label, value]) => { const number = typeof value === 'number' ? value : Number(value) || 0; const width = Math.max(3, Math.round((number / max) * 100)); const cls = options.colorResolver ? options.colorResolver(label, number) : ''; const action = options.actionResolver ? options.actionResolver(label, number) : null; const attrs = action ? `data-action="${escapeHtml(action.action)}" data-value="${escapeHtml(action.value)}"` : ''; const summary = `<strong>${escapeHtml(label)}</strong><br>${formatInteger(number)} registro(s)<br><small>${width}% da maior categoria exibida</small>`; return `<div class="bar-row ${action ? 'clickable' : ''}" ${attrs} data-summary="${escapeHtml(summary)}"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill ${escapeHtml(cls)}" style="width:${width}%"></div></div><div class="bar-value">${formatInteger(number)}</div></div>`; }).join('');
 }
 function renderTagCloud(containerId, entries) { const container = document.getElementById(containerId); if (!entries.length) { container.innerHTML = emptyState('Sem descrições registradas.'); return; } container.innerHTML = entries.map(([label, value]) => `<span class="tag" title="${escapeHtml(label)}"><b>${formatInteger(value)}</b> ${escapeHtml(truncate(label, 54))}</span>`).join(''); }
 function renderInsights(containerId, insights) { const container = document.getElementById(containerId); if (!insights.length) { container.innerHTML = emptyState('Sem alertas para o recorte atual.'); return; } container.innerHTML = insights.map((item) => `<div class="insight ${escapeHtml(item.type || '')}"><span class="insight-icon">${escapeHtml(item.icon || '•')}</span><div>${escapeHtml(item.text)}</div></div>`).join(''); }
@@ -706,7 +866,8 @@ function renderRecordsTable(containerId, rows, options = {}) {
 }
 function recordRowHtml(row) {
   const ontimeBadge = row.ontimeStatus === true ? '<span class="badge success">No prazo</span>' : row.ontimeStatus === false ? '<span class="badge danger">Fora prazo</span>' : '<span class="badge">Sem ONTIME</span>';
-  return `<tr data-open-record="${escapeHtml(row.id)}"><td><span class="badge info">${escapeHtml(row.source || '-')}</span></td><td><strong>${escapeHtml(formatDate(row.referenceDate) || row.dataProgramada || '-')}</strong><br><small>Agenda: ${escapeHtml(formatDate(row.agendaDate) || row.agenda || '-')}</small></td><td><strong>${escapeHtml(row.of || '-')}</strong><br><small>NF: ${escapeHtml(row.notaFiscal || '-')}</small></td><td title="${escapeHtml(row.cliente || '')}">${escapeHtml(truncate(row.cliente || '-', 34))}</td><td>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br><small>${escapeHtml(row.region || '')}</small></td><td>${escapeHtml(row.placa || '-')}<br><small>${escapeHtml(row.motorista || '-')}</small></td><td><span class="badge ${statusColorClass(row.statusBucket)}">${escapeHtml(row.statusBucket)}</span><br><small>${escapeHtml(truncate(row.status || row.faturamento || '-', 28))}</small></td><td>${ontimeBadge}</td><td>${row.hasOccurrence ? `<span class="badge warn" title="${escapeHtml(row.occurrenceText)}">Sim</span>` : '<span class="badge">Não</span>'}</td><td>${row.hasReturn ? `<span class="badge purple" title="${escapeHtml(row.returnText)}">Sim</span>` : '<span class="badge">Não</span>'}</td></tr>`;
+  const summary = `<strong>${escapeHtml(row.of || row.notaFiscal || 'Registro')}</strong><br>${escapeHtml(row.cliente || '-') }<br>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br>Status: ${escapeHtml(row.statusBucket)}${row.hasOccurrence ? '<br>Com ocorrência' : ''}${row.hasReturn ? '<br>Com devolução' : ''}`;
+  return `<tr data-open-record="${escapeHtml(row.id)}" data-summary="${escapeHtml(summary)}"><td><span class="badge info">${escapeHtml(row.source || '-')}</span></td><td><strong>${escapeHtml(formatDate(row.referenceDate) || row.dataProgramada || '-')}</strong><br><small>Agenda: ${escapeHtml(formatDate(row.agendaDate) || row.agenda || '-')}</small></td><td><strong>${escapeHtml(row.of || '-')}</strong><br><small>NF: ${escapeHtml(row.notaFiscal || '-')}</small></td><td title="${escapeHtml(row.cliente || '')}">${escapeHtml(truncate(row.cliente || '-', 34))}</td><td>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br><small>${escapeHtml(row.region || '')}</small></td><td>${escapeHtml(row.placa || '-')}<br><small>${escapeHtml(row.motorista || '-')}</small></td><td><span class="badge ${statusColorClass(row.statusBucket)}">${escapeHtml(row.statusBucket)}</span><br><small>${escapeHtml(truncate(row.status || row.faturamento || '-', 28))}</small></td><td>${ontimeBadge}</td><td>${row.hasOccurrence ? `<span class="badge warn" title="${escapeHtml(row.occurrenceText)}">Sim</span>` : '<span class="badge">Não</span>'}</td><td>${row.hasReturn ? `<span class="badge purple" title="${escapeHtml(row.returnText)}">Sim</span>` : '<span class="badge">Não</span>'}</td></tr>`;
 }
 function openRecordDetail(recordId) {
   const row = STATE.records.find((item) => item.id === recordId); if (!row) return;
@@ -759,7 +920,7 @@ function buildOccurrenceInsights(rows) {
 }
 function buildReturnInsights(rows) {
   if (!rows.length) return [{ type: 'success', icon: '✓', text: 'Nenhuma devolução registrada no recorte atual.' }];
-  const byRegion = countBy(rows, (row) => row.region || 'Sem região'), byReason = countBy(rows, (row) => cleanLabel(row.motivoDevolucao || row.devolucao) || 'Sem motivo'), byType = countBy(rows, (row) => cleanLabel(row.tipoDevolucao || row.devolucao) || 'Sem tipo');
+  const byRegion = countBy(rows, (row) => row.region || 'Sem região'), byReason = countBy(rows, (row) => cleanLabel(row.returnReason) || 'Sem motivo informado'), byType = countBy(rows.filter((row) => row.returnType === 'Total' || row.returnType === 'Parcial'), (row) => row.returnType);
   return [{ type: 'purple', icon: '↩', text: `Região com mais devoluções: ${topLabel(byRegion)}.` }, { type: 'warn', icon: '?', text: `Motivo mais frequente: ${topLabel(byReason)}.` }, { type: 'info', icon: '▤', text: `Tipo predominante: ${topLabel(byType)}. Use a tabela para abrir observações e notas.` }];
 }
 function buildMapAlerts(rows, selectedRegion) {
@@ -798,7 +959,7 @@ function answerQuestion(question) {
   if (/(atras|fora do prazo|prazo venc)/.test(q)) { const byUf = countBy(delayed, (row) => row.uf || 'Sem UF'); const sample = delayed.slice(0, 5).map((row) => `• ${row.of || row.notaFiscal || 'Carga'} - ${row.cliente || 'cliente não informado'} (${row.uf || '-'})`).join('\n'); return `${formatInteger(delayed.length)} carga(s) estão em atraso no recorte atual (${percent(delayed.length, rows.length)} do total). UF mais crítica: ${topLabel(byUf) || 'sem UF'}.\n${sample || 'Não há cargas atrasadas para listar.'}`; }
   if (/(ontime|on time|performance|dentro do prazo|sla)/.test(q)) { const eligible = rows.filter((row) => row.performanceEligible), ontime = eligible.filter((row) => row.ontimeStatus === true).length, late = eligible.filter((row) => row.ontimeStatus === false || row.delayed).length; return `Performance ONTIME do recorte: ${metrics.ontimeRate}%. Base contabilizada: ${formatInteger(eligible.length)} nota(s). Dentro do prazo: ${formatInteger(ontime)}. Fora do prazo: ${formatInteger(late)}. Em trânsito dentro do prazo ou sem fechamento não entra no denominador.`; }
   if (/(ocorr|problema|sinistro|avaria)/.test(q)) { const byUf = countBy(occurrences, (row) => row.uf || 'Sem UF'), bySector = countBy(occurrences, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(occurrences, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'); return `Há ${formatInteger(occurrences.length)} ocorrência(s). UF com maior volume: ${topLabel(byUf) || '-'}. Setor mais acionado: ${topLabel(bySector) || '-'}. Motorista/placa com mais registros: ${topLabel(byDriver) || '-'}. Consulte a aba Ocorrências para descrições e linhas detalhadas.`; }
-  if (/(devol|retorno|reversa)/.test(q)) { const byReason = countBy(returns, (row) => cleanLabel(row.motivoDevolucao || row.devolucao) || 'Sem motivo'), byRegion = countBy(returns, (row) => row.region || 'Sem região'), byDriver = countBy(returns, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'); return `Há ${formatInteger(returns.length)} devolução(ões). Motivo principal: ${topLabel(byReason) || '-'}. Região mais impactada: ${topLabel(byRegion) || '-'}. Motorista/placa com maior volume: ${topLabel(byDriver) || '-'}. Abra a aba Devoluções para notas e observações.`; }
+  if (/(devol|retorno|reversa)/.test(q)) { const byReason = countBy(returns, (row) => cleanLabel(row.returnReason) || 'Sem motivo informado'), byRegion = countBy(returns, (row) => row.region || 'Sem região'), byDriver = countBy(returns, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'); return `Há ${formatInteger(returns.length)} devolução(ões). Motivo principal: ${topLabel(byReason) || '-'}. Região mais impactada: ${topLabel(byRegion) || '-'}. Motorista/placa com maior volume: ${topLabel(byDriver) || '-'}. Abra a aba Devoluções para notas e observações.`; }
   if (/(agenda|hoje|amanha|amanhã|d\+2|proxim)/.test(q)) { const today = new Date(), d2 = rows.filter((row) => isBetweenDays(row.agendaDate || row.previsaoEntregaDate, today, addDays(today, 2))); const list = d2.slice(0, 8).map((row) => `• ${formatDate(row.agendaDate || row.previsaoEntregaDate)} - ${row.of || row.notaFiscal || 'Carga'} - ${row.uf || '-'} - ${truncate(row.cliente || '-', 42)}`).join('\n'); return `${formatInteger(d2.length)} agenda(s) encontradas até D+2.\n${list || 'Nenhuma agenda próxima no recorte atual.'}`; }
   if (/(motorista|placa|veiculo|veículo)/.test(q)) { const byTransit = countBy(rows.filter((row) => row.transit), (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'), byOcc = countBy(occurrences, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'); return `Motoristas/placas em trânsito: ${formatInteger(metrics.driversInTransit)}. Maior volume em trânsito: ${topLabel(byTransit) || '-'}. Maior recorrência em ocorrências: ${topLabel(byOcc) || '-'}.`; }
   if (/(total|quant|nota|carga|geral)/.test(q)) return `No recorte atual existem ${formatInteger(metrics.totalNotes)} nota(s), ${formatInteger(metrics.totalLoads)} carga(s), ${formatInteger(metrics.delivered)} finalizada(s), ${formatInteger(metrics.inTransit)} em trânsito, ${formatInteger(metrics.delayed)} atrasada(s), ${formatInteger(metrics.occurrences)} ocorrência(s) e ${formatInteger(metrics.returns)} devolução(ões).`;
@@ -869,6 +1030,13 @@ function normalizeText(value) {
   return separated.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 function normalizeUf(value) { const text = String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); const match = text.match(/\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/); return match ? match[1] : ''; }
+function monthNameToNumber(value) {
+  const n = normalizeText(value);
+  const map = { janeiro:1, jan:1, fevereiro:2, fev:2, marco:3, mar:3, abril:4, abr:4, maio:5, mai:5, junho:6, jun:6, julho:7, jul:7, agosto:8, ago:8, setembro:9, set:9, outubro:10, out:10, novembro:11, nov:11, dezembro:12, dez:12 };
+  if (map[n]) return map[n];
+  const numeric = Number(n);
+  return numeric >= 1 && numeric <= 12 ? numeric : null;
+}
 function extractUfFromText(text) { return normalizeUf(text); }
 function debounce(fn, delay) { let timer; return (...args) => { window.clearTimeout(timer); timer = window.setTimeout(() => fn(...args), delay); }; }
 function parseDate(value) {
