@@ -162,6 +162,7 @@ def audit() -> int:
         print("ERROS DE AUDITORIA:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)
+            print(f"::error title=Auditoria do snapshot::{error}")
         return 1
     print("Auditoria OK: snapshot contém as duas fontes, campos esperados e registros úteis conforme regras globais.")
     return 0

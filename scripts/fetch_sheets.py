@@ -469,44 +469,58 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]] = []
     base = f"https://docs.google.com/spreadsheets/d/e/{source['pubId']}"
     pubhtml_text = ""
-
-    try:
-        # O pubhtml completo pode ser grande e travar; o cabeçalho já contém os
-        # links/gids das abas publicadas. Ler apenas o início evita cair no CSV
-        # padrão da primeira aba e permite buscar a aba acompanhamento correta.
-        pubhtml_text = fetch_text_limited(source["url"])
-        errors.append(f"pubhtml parcial: {len(pubhtml_text)} caracteres lidos para descoberta de gids")
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"pubhtml parcial: {exc}")
-
-    gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
-    if target_gids:
-        gids_to_try = [gid for gid in gids if gid in target_gids]
-        errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
-    else:
-        gids_to_try = gids[:8]
-        errors.append("pubhtml parcial não informou gid da aba acompanhamento; tentando primeiros gids e CSV padrão")
-    if "0" not in gids_to_try:
-        gids_to_try.append("0")
-    csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids_to_try]
-    csv_candidates.append((f"{base}/pub?output=csv", ""))
-
     seen_urls: set[str] = set()
-    for url, gid in csv_candidates:
+
+    def collect_csv_candidate(url: str, target_priority: int, origin_label: str) -> None:
         if url in seen_urls:
-            continue
+            return
         seen_urls.add(url)
         try:
             rows = parse_csv_rows(fetch_text(url))
             records = rows_to_records(rows, source)
             if records:
                 fields = list(records[0].keys())
-                target_priority = 1 if gid in target_gids else 0
-                add_candidate(candidates_found, errors, target_priority, f"csv:{url}", records, fields)
+                add_candidate(candidates_found, errors, target_priority, origin_label, records, fields)
             else:
-                errors.append(f"csv sem dados: {url}")
+                errors.append(f"csv sem dados: {origin_label}")
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"csv {url}: {exc}")
+            errors.append(f"csv {origin_label}: {exc}")
+
+    # Primeira tentativa: endpoint gviz por nome da aba. Isso evita depender do
+    # gid e costuma retornar exatamente a aba acompanhamento como CSV.
+    for sheet_name in ("acompanhamento", "Acompanhamento", "ACOMPANHAMENTO"):
+        params = urllib.parse.urlencode({"tqx": "out:csv", "sheet": sheet_name})
+        collect_csv_candidate(f"{base}/gviz/tq?{params}", 2, f"gviz:{sheet_name}")
+        if has_rich_candidate(candidates_found):
+            break
+
+    if not has_rich_candidate(candidates_found):
+        try:
+            # O pubhtml completo pode ser grande e travar; o cabeçalho já contém os
+            # links/gids das abas publicadas. Ler apenas o início evita cair no CSV
+            # padrão da primeira aba e permite buscar a aba acompanhamento correta.
+            pubhtml_text = fetch_text_limited(source["url"])
+            errors.append(f"pubhtml parcial: {len(pubhtml_text)} caracteres lidos para descoberta de gids")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"pubhtml parcial: {exc}")
+
+        gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
+        if target_gids:
+            gids_to_try = [gid for gid in gids if gid in target_gids]
+            errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
+        else:
+            gids_to_try = gids[:2]
+            errors.append("pubhtml parcial não informou gid da aba acompanhamento; tentando primeiros gids e CSV padrão")
+        if "0" not in gids_to_try:
+            gids_to_try.append("0")
+        csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids_to_try]
+        csv_candidates.append((f"{base}/pub?output=csv", ""))
+
+        for url, gid in csv_candidates:
+            target_priority = 1 if gid in target_gids else 0
+            collect_csv_candidate(url, target_priority, f"csv:{url}")
+    else:
+        errors.append("pubhtml/gid ignorado: gviz da aba acompanhamento já trouxe base rica")
 
     # Só tenta XLSX quando os CSVs não trouxeram uma base rica. O XLSX completo é
     # mais pesado, mas serve como salvaguarda quando o Google não expõe os gids.
@@ -533,7 +547,7 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
         except Exception as exc:  # noqa: BLE001
             errors.append(f"xlsx: {exc}")
     else:
-        errors.append("xlsx ignorado: CSV da aba acompanhamento já trouxe base rica")
+        errors.append("xlsx ignorado: CSV/gviz da aba acompanhamento já trouxe base rica")
 
     # Como último fallback, se o pubhtml parcial veio completo o suficiente para
     # conter tabelas úteis, também avaliamos seus dados renderizados.
