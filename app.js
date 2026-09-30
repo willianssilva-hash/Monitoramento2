@@ -502,19 +502,27 @@ function getAliasedValue(record, aliases) {
 }
 
 function computeOntimeStatus(row, normalizedStatus) {
+  const due = row.previsaoEntregaDate || row.agendaDate;
+  const arrival = row.chegadaClienteDate;
+  if (isExplicitLateStatus(normalizedStatus)) return false;
+  if (row.waitingUnload) {
+    if (due && arrival) return startOfDay(arrival) <= endOfDay(due);
+    if (due && !arrival && isDateBeforeToday(due)) return false;
+    return null;
+  }
   const ontime = normalizeText(row.ontime);
   if (ontime) {
     if (/(fora|atras|vencid|late|nao|não|no prazo nao)/.test(ontime) && !/(dentro|sim|ok|on time|ontime|no prazo)/.test(ontime)) return false;
     if (/(dentro|sim|ok|on time|ontime|no prazo|prazo cumprido)/.test(ontime) || ontime === 's') return true;
     if (ontime === 'n') return false;
   }
-  if (/(fora do prazo|em transito fora do prazo|atrasad)/.test(normalizedStatus)) return false;
-  const due = row.previsaoEntregaDate || row.agendaDate; const arrival = row.chegadaClienteDate;
   if (due && arrival) return startOfDay(arrival) <= endOfDay(due);
   return null;
 }
-function computePerformanceEligible(row, normalizedStatus) { if (row.delivered || row.waitingUnload) return row.ontimeStatus !== null; if (/(fora do prazo|em transito fora do prazo|atrasad)/.test(normalizedStatus)) return true; return row.ontimeStatus === false; }
-function computeDelayed(row, normalizedStatus) { if (row.ontimeStatus === false || /(fora do prazo|atrasad|vencid)/.test(normalizedStatus)) return true; const due = row.previsaoEntregaDate || row.agendaDate; return Boolean(due && !row.delivered && !row.waitingUnload && startOfDay(due) < startOfDay(new Date())); }
+function computePerformanceEligible(row, normalizedStatus) { if (row.delivered || row.waitingUnload) return row.ontimeStatus !== null; if (isExplicitLateStatus(normalizedStatus)) return true; return row.ontimeStatus === false; }
+function computeDelayed(row, normalizedStatus) { if (row.ontimeStatus === false || isExplicitLateStatus(normalizedStatus)) return true; const due = row.previsaoEntregaDate || row.agendaDate; return Boolean(due && !row.delivered && !row.waitingUnload && isDateBeforeToday(due)); }
+function isExplicitLateStatus(normalizedStatus) { return /(em transito fora do prazo|fora do prazo|atrasad|vencid)/.test(normalizedStatus || ''); }
+function isDateBeforeToday(date) { return Boolean(date && startOfDay(date) < startOfDay(new Date())); }
 function computeStatusBucket(row, normalizedStatus) { if (row.delayed) return 'Fora do prazo'; if (row.waitingUnload) return 'Aguard. descarga'; if (row.delivered) return 'Finalizado'; if (row.transit) return 'Em trânsito'; if (/(faturamento|faturado|entrada concluida|entrada concluída)/.test(normalizedStatus)) return 'Faturado'; return 'Em aberto'; }
 function isDelivered(normalizedStatus) { return /(finalizad|entregue|entrega realizada|baixad|concluid)/.test(normalizedStatus) && !/(faturamento|entrada)/.test(normalizedStatus); }
 function isWaitingUnload(normalizedStatus) { return /(aguardando descarga|descarga no cliente|em descarga|aguard descarga)/.test(normalizedStatus); }
