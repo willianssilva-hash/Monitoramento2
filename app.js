@@ -1,7 +1,7 @@
 'use strict';
 
 const CONFIG = {
-  refreshIntervalMs: 10 * 60 * 1000,
+  refreshIntervalMs: 15 * 60 * 1000,
   sheetAttempts: ['acompanhamento', 'Acompanhamento', ''], // tenta a aba solicitada e, como fallback, a primeira aba publicada
   sources: [
     { key: 'filial-ba', name: 'Monitoramento Filial BA', short: 'Filial BA', color: '#1398d6', pubId: '2PACX-1vSi7hRouHidVGdRosoQx4RqpQw-iLKCiYpjMyIeSGXm_o3QxFeiw_11i0d7OcTfTtdXDydOFwIhqnCr', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSi7hRouHidVGdRosoQx4RqpQw-iLKCiYpjMyIeSGXm_o3QxFeiw_11i0d7OcTfTtdXDydOFwIhqnCr/pubhtml' },
@@ -57,7 +57,8 @@ const STATE = {
   rawRecords: [], records: [], filtered: [], errors: [], isDemo: false, isLoading: false,
   lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', mapStatus: 'all', weather: {},
   brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '', mapZoom: 1, mapPanX: 0, mapPanY: 0, mapDragging: false, mapDragStart: null, tableSorts: {},
-  monitorMemory: { totalRequests: 0, topics: {}, lastQuestions: [], insights: [] }, monitorLastSignature: '', occurrenceDetailRows: [], occurrenceDetailLabel: '', compactMode: false,
+  monitorMemory: { totalRequests: 0, topics: {}, lastQuestions: [], insights: [] }, monitorLastSignature: '', occurrenceDetailRows: [], occurrenceDetailLabel: '',
+  chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
   filters: { from: '', to: '', month: 'all', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
@@ -74,7 +75,7 @@ const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard
 
 window.addEventListener('DOMContentLoaded', () => {
   cacheDom(); initTheme(); initPalette(); initCompactMode(); loadMonitorMemory(); bindEvents(); installGvizFallback(); populateSourceFilter();
-  addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 10 minutos. Agora aprendo com suas solicitações, gero insights em tempo real e adapto minhas respostas aos temas que você mais consulta.');
+  addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 15 minutos. Agora aprendo com suas solicitações, gero insights em tempo real e adapto minhas respostas aos temas que você mais consulta.');
   loadData({ manual: false });
   loadBrazilGeoJson();
   if (countdownTimer) window.clearInterval(countdownTimer);
@@ -82,7 +83,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function cacheDom() {
-  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicMetricA','dynamicMetricB','dynamicInfoChart','dynamicInfoInsights','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
+  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
@@ -101,11 +102,14 @@ function bindEvents() {
   DOM.exportReportBtn.addEventListener('click', () => { const report = buildQuickReport(); addAiMessage(report); exportQuickReportXlsx(); });
   document.querySelectorAll('.subtab-button').forEach((button) => button.addEventListener('click', () => activatePerformanceView(button.dataset.performanceView)));
   document.querySelectorAll('.report-option').forEach((input) => input.addEventListener('change', renderReportBuilder));
-  document.querySelectorAll('.dynamic-select').forEach((input) => input.addEventListener('change', renderReportBuilder));
+  renderDynamicTypeButtons();
   if (DOM.exportDynamicReportBtn) DOM.exportDynamicReportBtn.addEventListener('click', showReportExportDialog);
   if (DOM.exportReportClose) DOM.exportReportClose.addEventListener('click', () => DOM.exportReportDialog.close());
   if (DOM.exportReportPdfBtn) DOM.exportReportPdfBtn.addEventListener('click', () => { DOM.exportReportDialog.close(); exportDynamicReportPdf(); });
   if (DOM.exportReportXlsxBtn) DOM.exportReportXlsxBtn.addEventListener('click', () => { DOM.exportReportDialog.close(); exportDynamicReport(); });
+  if (DOM.chartPreviewClose) DOM.chartPreviewClose.addEventListener('click', () => DOM.chartPreviewModal.close());
+  if (DOM.chartPreviewExport) DOM.chartPreviewExport.addEventListener('click', exportChartPreviewXlsx);
+  if (DOM.chartPreviewPrint) DOM.chartPreviewPrint.addEventListener('click', printChartPreview);
   if (DOM.occurrenceDetailClose) DOM.occurrenceDetailClose.addEventListener('click', () => DOM.occurrenceDetailModal.close());
   if (DOM.occurrenceDetailExport) DOM.occurrenceDetailExport.addEventListener('click', exportOccurrenceDetailXlsx);
   if (DOM.occurrenceDetailPrint) DOM.occurrenceDetailPrint.addEventListener('click', printOccurrenceDetail);
@@ -123,7 +127,7 @@ function bindEvents() {
   document.body.addEventListener('click', (event) => {
     const sortButton = event.target.closest('[data-table-sort]'); if (sortButton) return handleTableSort(sortButton);
     const row = event.target.closest('[data-open-record]'); if (row) return openRecordDetail(row.dataset.openRecord);
-    const action = event.target.closest('[data-action]'); if (action) handleAction(action.dataset.action, action.dataset.value);
+    const action = event.target.closest('[data-action]'); if (action) handleAction(action.dataset.action, action.dataset.value, action);
   });
   DOM.modalClose.addEventListener('click', () => DOM.detailModal.close());
   DOM.detailModal.addEventListener('click', (event) => {
@@ -800,10 +804,11 @@ function normalizeCargoTypeForProfile(value) {
   return normalizeText(label) === 'dr' ? '' : label;
 }
 function normalizeVehicleTypeForProfile(value) {
-  const label = cleanLabel(value);
-  const normalized = normalizeText(label);
-  if (!label || /postergado|cancelado/.test(normalized)) return '';
-  return label;
+  const normalized = normalizeText(value);
+  if (/bitrem/.test(normalized)) return 'BITREM';
+  if (/carreta/.test(normalized)) return 'CARRETA';
+  if (/truck|truque/.test(normalized)) return 'TRUCK';
+  return '';
 }
 function normalizeTransporterLabel(value) {
   const label = cleanLabel(value);
@@ -813,7 +818,7 @@ function normalizeTransporterLabel(value) {
 function miniProfileSection(title, entries, measureLabel = 'Campo operacional da planilha filtrada.') {
   if (!entries.length) return `<section class="profile-section"><h4>${escapeHtml(title)}</h4>${emptyState('Sem dados.')}</section>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
-  return `<section class="profile-section"><h4>${escapeHtml(title)}</h4>${entries.map(([label, value], index) => `<div class="profile-row" data-summary="${escapeHtml(`<strong>${label}</strong><br>${formatInteger(value)} registro(s)<br><small>Contabilização: ${measureLabel}</small>`)}"><span title="${escapeHtml(label)}">${escapeHtml(truncate(label, 26))}</span><i><em style="width:${Math.max(5, Math.round((value / max) * 100))}%; background:${chartColor(label, index)}"></em></i><b>${formatInteger(value)}</b></div>`).join('')}</section>`;
+  return `<section class="profile-section"><h4>${escapeHtml(title)}</h4>${entries.map(([label, value], index) => `<div class="profile-row" data-action="chartPreview" data-value="${escapeHtml(`profile:${title}|||${label}`)}" data-summary="${escapeHtml(`<strong>${label}</strong><br>${formatInteger(value)} registro(s)<br><small>Contabilização: ${measureLabel}</small><br><small>Clique para abrir a prévia resumida.</small>`)}"><span title="${escapeHtml(label)}">${escapeHtml(truncate(label, 26))}</span><i><em style="width:${Math.max(5, Math.round((value / max) * 100))}%; background:${chartColor(label, index)}"></em></i><b>${formatInteger(value)}</b></div>`).join('')}</section>`;
 }
 function chartColor(seed, index = 0) {
   const key = normalizeText(seed);
@@ -891,7 +896,7 @@ function renderConsolidatedPerformance(rows) {
   renderRecordsTable('consolidatedLateTable', rows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false)), { limit: 300, empty: 'Nenhuma carga fora do prazo no consolidado.' });
 }
 function performanceGaugeHtml(rate, label, stats) {
-  const statHtml = stats.map(([name, value, type]) => `<div class="gauge-stat ${escapeHtml(type || '')}" data-summary="${escapeHtml(`<strong>${name}</strong><br>${formatInteger(value)} registro(s)<br><small>Contabilização: base elegível ONTIME, status finalizado/aguardando descarga ou fora do prazo.</small>`)}"><span>${escapeHtml(name)}</span><strong>${formatInteger(value)}</strong></div>`).join('');
+  const statHtml = stats.map(([name, value, type]) => `<div class="gauge-stat ${escapeHtml(type || '')}" data-action="chartPreview" data-value="${escapeHtml(`performanceGauge:${label}|||${name}`)}" data-summary="${escapeHtml(`<strong>${name}</strong><br>${formatInteger(value)} registro(s)<br><small>Contabilização: base elegível ONTIME, status finalizado/aguardando descarga ou fora do prazo.</small><br><small>Clique para abrir a prévia resumida.</small>`)}"><span>${escapeHtml(name)}</span><strong>${formatInteger(value)}</strong></div>`).join('');
   return `<div class="performance-gauge-card" data-summary="${escapeHtml(`<strong>${label}</strong><br>${rate}% dentro do prazo<br><small>Contabilização: notas elegíveis pela regra ONTIME do painel.</small>`)}"><div class="gauge-ring" style="--pct:${rate}"><div class="gauge-content"><strong>${rate}%</strong><span>${escapeHtml(label)}</span></div></div><div class="gauge-stat-list">${statHtml}</div></div>`;
 }
 function renderPerformanceSourceInsights(containerId, eligibleRows, allRows) {
@@ -907,7 +912,7 @@ function renderPerformanceSourceInsights(containerId, eligibleRows, allRows) {
   const sourceCards = entries.map(([label, item]) => {
     const cls = item.rate >= 90 ? 'success' : item.rate >= 75 ? 'warn' : 'danger';
     const summary = `<strong>${escapeHtml(label)}</strong><br>${item.rate}% dentro do prazo<br>${formatInteger(item.ontime)} no prazo • ${formatInteger(item.late)} fora<br>${formatInteger(item.count)} nota(s) elegíveis<br><small>Contabilização: origem das notas elegíveis pela regra ONTIME.</small>`;
-    return `<div class="origin-rate-card ${cls}" data-summary="${escapeHtml(summary)}"><div><strong>${escapeHtml(label)}</strong><span>${formatInteger(item.count)} notas elegíveis</span></div><b>${item.rate}%</b><i><em style="width:${item.rate}%"></em></i></div>`;
+    return `<div class="origin-rate-card ${cls}" data-action="chartPreview" data-value="${escapeHtml(`performanceSource|||${label}`)}" data-summary="${escapeHtml(summary)}"><div><strong>${escapeHtml(label)}</strong><span>${formatInteger(item.count)} notas elegíveis</span></div><b>${item.rate}%</b><i><em style="width:${item.rate}%"></em></i></div>`;
   }).join('');
   const selectedSource = STATE.filters.source === 'all' ? null : STATE.filters.source;
   const focusRows = selectedSource ? allRows.filter((row) => row.source === selectedSource) : allRows;
@@ -1046,19 +1051,33 @@ function getDynamicDimensionDefinitions() {
     occurrence: { label: 'Ocorrência', measure: 'Tipo/descrição de ocorrência informado na planilha.', getter: (row) => row.hasOccurrence ? occurrenceTypeLabel(row) : 'Sem ocorrência' },
     return: { label: 'Devolução', measure: 'Tipo/motivo de devolução informado na planilha.', getter: (row) => row.hasReturn ? (cleanLabel(row.returnReason) || row.returnType || 'Com devolução') : 'Sem devolução' },
     transporter: { label: 'Transportador', measure: 'Transportador informado na planilha, com Rodocolor unificado.', getter: (row) => normalizeTransporterLabel(row.transportadora) },
-    vehicle: { label: 'Tipo de veículo', measure: 'Tipo de veículo informado na planilha.', getter: (row) => cleanLabel(row.tpVeiculo) || 'Sem veículo' },
+    vehicle: { label: 'Tipo de veículo', measure: 'Tipo de veículo informado na planilha, mantendo Truck, Carreta e Bitrem.', getter: (row) => normalizeVehicleTypeForProfile(row.tpVeiculo) || 'Outros/ignorado' },
     month: { label: 'Mês', measure: 'Mês da planilha ou data de referência do registro.', getter: (row) => row.monthNumber ? String(row.monthNumber).padStart(2, '0') : 'Sem mês' }
   };
+}
+function renderDynamicTypeButtons() {
+  const defs = getDynamicDimensionDefinitions();
+  const options = Object.entries(defs);
+  const render = (axis, container) => {
+    if (!container) return;
+    const active = axis === 'a' ? STATE.dynamicMetricA : STATE.dynamicMetricB;
+    container.innerHTML = options.map(([key, def]) => `<button type="button" class="dynamic-type-btn ${active === key ? 'active' : ''}" data-action="dynamicAxis" data-axis="${axis}" data-value="${escapeHtml(key)}">${escapeHtml(def.label)}</button>`).join('');
+  };
+  render('a', DOM.dynamicTypeGroupA);
+  render('b', DOM.dynamicTypeGroupB);
 }
 function renderDynamicInfo(rows) {
   if (!DOM.dynamicInfoChart || !DOM.dynamicInfoInsights) return;
   const defs = getDynamicDimensionDefinitions();
-  const keyA = (DOM.dynamicMetricA && defs[DOM.dynamicMetricA.value]) ? DOM.dynamicMetricA.value : 'status';
-  let keyB = (DOM.dynamicMetricB && defs[DOM.dynamicMetricB.value]) ? DOM.dynamicMetricB.value : 'uf';
+  const keyA = defs[STATE.dynamicMetricA] ? STATE.dynamicMetricA : 'status';
+  let keyB = defs[STATE.dynamicMetricB] ? STATE.dynamicMetricB : 'uf';
   if (keyA === keyB) keyB = keyA === 'status' ? 'uf' : 'status';
-  const dimA = defs[keyA], dimB = defs[keyB];
+  STATE.dynamicMetricA = keyA; STATE.dynamicMetricB = keyB;
+  const dimA = { ...defs[keyA], key: keyA }, dimB = { ...defs[keyB], key: keyB };
+  renderDynamicTypeButtons();
   const matrix = buildDynamicMatrix(rows, dimA, dimB);
   DOM.dynamicInfoChart.innerHTML = dynamicMatrixHtml(matrix, dimA, dimB);
+  renderDynamicFilterChips(matrix, dimA, dimB);
   renderInsights('dynamicInfoInsights', buildDynamicInsights(matrix, dimA, dimB, rows));
 }
 function buildDynamicMatrix(rows, dimA, dimB) {
@@ -1070,42 +1089,51 @@ function buildDynamicMatrix(rows, dimA, dimB) {
     groups[a].total += 1;
     groups[a].values[b] = (groups[a].values[b] || 0) + 1;
   });
-  const topA = Object.entries(groups).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
+  const hiddenA = STATE.dynamicFiltersA || new Set();
+  const hiddenB = STATE.dynamicFiltersB || new Set();
+  const allRows = Object.entries(groups).sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([label, item]) => ({ label, total: item.total, values: item.values }));
   const bTotals = {};
-  topA.forEach(([, item]) => Object.entries(item.values).forEach(([label, value]) => { bTotals[label] = (bTotals[label] || 0) + value; }));
-  const topB = topEntries(bTotals, 6).map(([label]) => label);
-  return { rows: topA.map(([label, item]) => ({ label, total: item.total, values: item.values })), columns: topB };
+  allRows.forEach((item) => Object.entries(item.values).forEach(([label, value]) => { bTotals[label] = (bTotals[label] || 0) + value; }));
+  const allColumns = topEntries(bTotals, 8).map(([label]) => label);
+  const visibleRows = allRows.filter((row) => !hiddenA.has(row.label));
+  const visibleColumns = allColumns.filter((label) => !hiddenB.has(label));
+  return { rows: visibleRows, columns: visibleColumns, allRows, allColumns };
+}
+function renderDynamicFilterChips(matrix, dimA, dimB) {
+  if (!DOM.dynamicFilterChips) return;
+  const chipGroup = (axis, title, labels, hidden) => `<div class="dynamic-chip-group"><strong>${escapeHtml(title)}</strong>${labels.map((label) => `<button type="button" class="dynamic-filter-chip ${hidden.has(label) ? '' : 'active'}" data-action="dynamicQuickFilter" data-axis="${axis}" data-value="${escapeHtml(label)}">${escapeHtml(truncate(label, 24))}</button>`).join('')}</div>`;
+  DOM.dynamicFilterChips.innerHTML = chipGroup('a', dimA.label, matrix.allRows.map((row) => row.label), STATE.dynamicFiltersA) + chipGroup('b', dimB.label, matrix.allColumns, STATE.dynamicFiltersB);
 }
 function dynamicMatrixHtml(matrix, dimA, dimB) {
-  if (!matrix.rows.length) return emptyState('Sem dados para cruzar as informações selecionadas.');
+  if (!matrix.rows.length || !matrix.columns.length) return emptyState('Sem dados para cruzar as informações selecionadas. Reative botões do filtro rápido.');
   const max = Math.max(1, ...matrix.rows.map((row) => row.total));
-  return `<div class="dynamic-matrix"><div class="dynamic-matrix-head"><span>${escapeHtml(dimA.label)}</span><span>${escapeHtml(dimB.label)}</span><b>Total</b></div>${matrix.rows.map((row, rowIndex) => {
+  return `<div class="dynamic-matrix"><div class="dynamic-matrix-head"><span>${escapeHtml(dimA.label)}</span><span>${escapeHtml(dimB.label)}</span><b>Total</b></div>${matrix.rows.map((row) => {
     const segments = matrix.columns.map((column, index) => {
       const value = row.values[column] || 0;
       const pct = row.total ? Math.round((value / row.total) * 100) : 0;
-      const summary = `<strong>${escapeHtml(row.label)} x ${escapeHtml(column)}</strong><br>${formatInteger(value)} registro(s)<br><small>${pct}% da linha ${escapeHtml(row.label)}</small><br><small>Contabilização: ${escapeHtml(dimA.measure)} Cruzado com: ${escapeHtml(dimB.measure)}</small>`;
-      return `<span style="width:${Math.max(value ? 6 : 0, pct)}%; background:${chartColor(column, index)}" data-summary="${escapeHtml(summary)}"></span>`;
+      const summary = `<strong>${escapeHtml(row.label)} x ${escapeHtml(column)}</strong><br>${formatInteger(value)} registro(s)<br><small>${pct}% da linha ${escapeHtml(row.label)}</small><br><small>Contabilização: ${escapeHtml(dimA.measure)} Cruzado com: ${escapeHtml(dimB.measure)}</small><br><small>Clique para abrir a prévia resumida.</small>`;
+      return `<span style="width:${Math.max(value ? 6 : 0, pct)}%; background:${chartColor(column, index)}" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}|||${dimB.key}:${column}`)}" data-summary="${escapeHtml(summary)}"></span>`;
     }).join('');
-    return `<div class="dynamic-matrix-row" data-summary="${escapeHtml(`<strong>${row.label}</strong><br>${formatInteger(row.total)} registro(s)<br><small>Contabilização: ${dimA.measure}</small>`)}"><strong>${escapeHtml(truncate(row.label, 30))}</strong><div class="dynamic-stack" style="--w:${Math.max(6, Math.round((row.total / max) * 100))}%">${segments}</div><b>${formatInteger(row.total)}</b></div>`;
+    return `<div class="dynamic-matrix-row" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}`)}" data-summary="${escapeHtml(`<strong>${row.label}</strong><br>${formatInteger(row.total)} registro(s)<br><small>Contabilização: ${dimA.measure}</small><br><small>Clique para abrir a prévia resumida.</small>`)}"><strong>${escapeHtml(truncate(row.label, 30))}</strong><div class="dynamic-stack" style="--w:${Math.max(6, Math.round((row.total / max) * 100))}%">${segments}</div><b>${formatInteger(row.total)}</b></div>`;
   }).join('')}<div class="dynamic-legend">${matrix.columns.map((column, index) => `<span><i style="background:${chartColor(column, index)}"></i>${escapeHtml(truncate(column, 24))}</span>`).join('')}</div></div>`;
 }
 function buildDynamicInsights(matrix, dimA, dimB, rows) {
   if (!matrix.rows.length) return [{ type: 'info', icon: '◇', text: 'Selecione duas informações para gerar o cruzamento dinâmico.' }];
   let topPair = null;
-  matrix.rows.forEach((row) => Object.entries(row.values).forEach(([column, value]) => { if (!topPair || value > topPair.value) topPair = { a: row.label, b: column, value }; }));
+  matrix.rows.forEach((row) => Object.entries(row.values).forEach(([column, value]) => { if (matrix.columns.includes(column) && (!topPair || value > topPair.value)) topPair = { a: row.label, b: column, value }; }));
   const total = rows.length || 1;
   const leader = matrix.rows[0];
   return [
     { type: 'info', icon: '◇', text: `Cruzamento ativo: ${dimA.label} x ${dimB.label}, usando ${formatInteger(rows.length)} registro(s) filtrados.` },
-    { type: 'warn', icon: '🔎', text: `Maior combinação: ${topPair ? `${topPair.a} + ${topPair.b} (${formatInteger(topPair.value)})` : 'sem dados'}.` },
-    { type: 'success', icon: '↔', text: `${leader.label} concentra ${percent(leader.total, total)} da seleção para ${dimA.label}.` }
+    { type: 'warn', icon: '🔎', text: `Maior combinação visível: ${topPair ? `${topPair.a} + ${topPair.b} (${formatInteger(topPair.value)})` : 'sem dados'}.` },
+    { type: 'success', icon: '↔', text: `${leader.label} concentra ${percent(leader.total, total)} da seleção para ${dimA.label}. Use os chips para ocultar/exibir categorias.` }
   ];
 }
 
 function reportBarBlock(title, entries) {
   if (!entries.length) return `<div class="report-block"><h4>${escapeHtml(title)}</h4><p>Sem dados nos filtros.</p></div>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
-  return `<div class="report-block"><h4>${escapeHtml(title)}</h4>${entries.map(([label, value]) => `<div class="report-bar" data-summary="${escapeHtml(`<strong>${label}</strong><br>${formatInteger(value)} registro(s)<br><small>Contabilização: dados agregados do bloco ${title}.</small>`)}"><span>${escapeHtml(label)}</span><i><em style="width:${Math.max(4, Math.round(value / max * 100))}%"></em></i><b>${formatInteger(value)}</b></div>`).join('')}</div>`;
+  return `<div class="report-block"><h4>${escapeHtml(title)}</h4>${entries.map(([label, value]) => `<div class="report-bar" data-action="chartPreview" data-value="${escapeHtml(`report:${title}|||${label}`)}" data-summary="${escapeHtml(`<strong>${label}</strong><br>${formatInteger(value)} registro(s)<br><small>Contabilização: dados agregados do bloco ${title}.</small><br><small>Clique para abrir a prévia resumida.</small>`)}"><span>${escapeHtml(label)}</span><i><em style="width:${Math.max(4, Math.round(value / max * 100))}%"></em></i><b>${formatInteger(value)}</b></div>`).join('')}</div>`;
 }
 function reportScheduleBlock(rows) {
   const today = new Date();
@@ -1507,7 +1535,7 @@ function renderBarList(containerId, data, options = {}) {
     const number = typeof value === 'number' ? value : Number(value) || 0;
     const width = Math.max(3, Math.round((number / max) * 100));
     const cls = options.colorResolver ? options.colorResolver(label, number) : '';
-    const action = options.actionResolver ? options.actionResolver(label, number) : null;
+    const action = options.actionResolver ? options.actionResolver(label, number) : { action: 'chartPreview', value: `${containerId}|||${label}` };
     const attrs = action ? `data-action="${escapeHtml(action.action)}" data-value="${escapeHtml(action.value)}"` : '';
     const summary = `<strong>${escapeHtml(label)}</strong><br>${formatInteger(number)} registro(s)<br><small>${width}% da maior categoria exibida</small><br><small>Contabilização: ${escapeHtml(measure)}</small>`;
     return `<div class="bar-row ${action ? 'clickable' : ''}" ${attrs} data-summary="${escapeHtml(summary)}"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill ${escapeHtml(cls)}" style="width:${width}%"></div></div><div class="bar-value">${formatInteger(number)}</div></div>`;
@@ -1597,13 +1625,153 @@ function openRecordDetail(recordId) {
     try { DOM.detailModal.showModal(); } catch (_) { DOM.detailModal.setAttribute('open', 'open'); }
   } else DOM.detailModal.setAttribute('open', 'open');
 }
-function handleAction(action, value) {
+function handleAction(action, value, element = null) {
   if (action === 'filterStatus') { const next = value || 'all'; DOM.filterStatus.value = DOM.filterStatus.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'statusBucket') { const statusMap = { 'Fora do prazo': 'delayed', Finalizado: 'delivered', 'Aguard. descarga': 'waiting', 'Em trânsito': 'transit', 'Em aberto': 'open', Faturado: 'open' }; const next = statusMap[value] || 'all'; DOM.filterStatus.value = DOM.filterStatus.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'uf') { const next = value || 'all'; DOM.filterUf.value = DOM.filterUf.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'filterMonth') { const next = value || 'all'; DOM.filterMonth.value = DOM.filterMonth.value === next ? 'all' : next; onFilterChange(); }
+  if (action === 'dynamicAxis') return setDynamicAxis(element?.dataset.axis || 'a', value);
+  if (action === 'dynamicQuickFilter') return toggleDynamicQuickFilter(element?.dataset.axis || 'a', value);
+  if (action === 'chartPreview') return openChartPreview(value);
   if (action === 'occurrenceDescription') openOccurrenceDescriptionDetail(value);
   if (action === 'region') { const next = value || 'all'; STATE.selectedRegion = STATE.selectedRegion === next ? 'all' : next; DOM.mapRegionFilter.value = STATE.selectedRegion; activateTab('map'); }
+}
+function setDynamicAxis(axis, value) {
+  const defs = getDynamicDimensionDefinitions();
+  if (!defs[value]) return;
+  if (axis === 'b') STATE.dynamicMetricB = value; else STATE.dynamicMetricA = value;
+  if (STATE.dynamicMetricA === STATE.dynamicMetricB) STATE.dynamicMetricB = STATE.dynamicMetricA === 'status' ? 'uf' : 'status';
+  STATE.dynamicFiltersA = new Set(); STATE.dynamicFiltersB = new Set();
+  renderReportBuilder();
+}
+function toggleDynamicQuickFilter(axis, value) {
+  const set = axis === 'b' ? STATE.dynamicFiltersB : STATE.dynamicFiltersA;
+  if (set.has(value)) set.delete(value); else set.add(value);
+  renderReportBuilder();
+}
+
+
+function openChartPreview(contextValue) {
+  const { rows, label, context } = buildChartPreviewRows(contextValue);
+  STATE.chartPreviewRows = rows;
+  STATE.chartPreviewLabel = label;
+  STATE.chartPreviewContext = context;
+  if (!DOM.chartPreviewModal) return;
+  DOM.chartPreviewTitle.textContent = label || 'Resumo do gráfico';
+  DOM.chartPreviewBody.innerHTML = chartPreviewHtml(rows, label, context);
+  if (typeof DOM.chartPreviewModal.showModal === 'function') {
+    try { DOM.chartPreviewModal.showModal(); } catch (_) { DOM.chartPreviewModal.setAttribute('open', 'open'); }
+  } else DOM.chartPreviewModal.setAttribute('open', 'open');
+}
+function buildChartPreviewRows(contextValue) {
+  const [rawContext = '', rawLabel = ''] = String(contextValue || '').split('|||');
+  const label = rawLabel || rawContext || 'Resumo';
+  const normalizedLabel = normalizeText(label);
+  const rows = chartPreviewBaseRows(rawContext);
+  const defs = getDynamicDimensionDefinitions();
+  let filtered = rows;
+  if (rawContext.startsWith('dynamic:')) {
+    const parts = rawContext.split(':');
+    const dimA = defs[parts[1]];
+    const valueA = parts.slice(2).join(':');
+    const right = rawLabel || '';
+    if (dimA) filtered = filtered.filter((row) => normalizeText(simplifyDescription(dimA.getter(row))) === normalizeText(valueA));
+    if (right.includes(':')) {
+      const [keyB, ...valueParts] = right.split(':');
+      const dimB = defs[keyB];
+      const valueB = valueParts.join(':');
+      if (dimB) filtered = filtered.filter((row) => normalizeText(simplifyDescription(dimB.getter(row))) === normalizeText(valueB));
+    }
+    return { rows: filtered, label: `Informação dinâmica • ${valueA}${right ? ` x ${right.split(':').slice(1).join(':')}` : ''}`, context: 'Informação Dinâmica' };
+  }
+  if (rawContext.startsWith('report:')) {
+    const title = rawContext.replace(/^report:/, '');
+    filtered = filtered.filter((row) => {
+      const nTitle = normalizeText(title);
+      if (nTitle.includes('status')) return row.statusBucket === label;
+      if (nTitle.includes('uf')) return row.uf === label;
+      if (nTitle.includes('ocorr')) return row.hasOccurrence && normalizeText(occurrenceTypeLabel(row)) === normalizedLabel;
+      if (nTitle.includes('devol')) return row.hasReturn && normalizeText(cleanLabel(row.returnReason) || 'Sem motivo informado') === normalizedLabel;
+      if (nTitle.includes('transport')) return normalizeText(normalizeTransporterLabel(row.transportadora)) === normalizedLabel;
+      return row.searchText && row.searchText.includes(normalizedLabel);
+    });
+    return { rows: filtered, label: `${title} • ${label}`, context: `Bloco do relatório: ${title}` };
+  }
+  if (rawContext.startsWith('profile:')) {
+    const section = rawContext.replace(/^profile:/, '');
+    filtered = filtered.filter((row) => {
+      if (section === 'Tipo de carga') return normalizeText(normalizeCargoTypeForProfile(row.tpCarga)) === normalizedLabel;
+      if (section === 'Veículo') return normalizeText(normalizeVehicleTypeForProfile(row.tpVeiculo)) === normalizedLabel;
+      if (section === 'Transportador') return normalizeText(normalizeTransporterLabel(row.transportadora)) === normalizedLabel;
+      return false;
+    });
+    return { rows: filtered, label: `${section} • ${label}`, context: section };
+  }
+  if (rawContext.startsWith('performanceGauge:')) {
+    filtered = filterPerformanceGaugeRows(rows, label);
+    return { rows: filtered, label: `Performance • ${label}`, context: 'Performance ONTIME' };
+  }
+  const filters = {
+    statusChart: (row) => row.statusBucket === label,
+    ufChart: (row) => row.uf === label,
+    occurrenceTypes: (row) => row.hasOccurrence && normalizeText(occurrenceTypeLabel(row)) === normalizedLabel,
+    occurrenceUf: (row) => row.hasOccurrence && row.uf === label,
+    occurrenceSector: (row) => row.hasOccurrence && normalizeText(cleanLabel(row.setor) || 'Sem setor') === normalizedLabel,
+    occurrenceDrivers: (row) => row.hasOccurrence && normalizeText(cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa') === normalizedLabel,
+    returnTypes: (row) => row.hasReturn && normalizeText(row.returnType || 'Sem tipo') === normalizedLabel,
+    returnReasons: (row) => row.hasReturn && normalizeText(cleanLabel(row.returnReason) || 'Sem motivo informado') === normalizedLabel,
+    returnRegions: (row) => row.hasReturn && normalizeText(row.region || 'Sem região') === normalizedLabel,
+    returnDrivers: (row) => row.hasReturn && normalizeText(cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa') === normalizedLabel,
+    extrasTransporters: (row) => normalizeText(normalizeTransporterLabel(row.transportadora)) === normalizedLabel,
+    extrasCargoTypes: (row) => normalizeText(cleanLabel(row.tpCarga) || 'Sem tipo') === normalizedLabel,
+    extrasClients: (row) => normalizeText(cleanLabel(row.cliente) || 'Sem cliente') === normalizedLabel,
+    extrasDocuments: (row) => normalizeText(`${getRawField(row, ['Manifesto']) || 'Manifesto não informado'} / ${getRawField(row, ['Digitalização do Canhoto', 'Digitalizacao do Canhoto', 'Canhoto']) || 'Canhoto não informado'}`) === normalizedLabel,
+    performanceSource: (row) => row.performanceEligible && normalizeText(row.source || 'Sem origem') === normalizedLabel,
+    performanceUf: (row) => row.performanceEligible && row.uf === label,
+    consolidatedBySource: (row) => row.performanceEligible && normalizeText(row.source || 'Sem origem') === normalizedLabel,
+    consolidatedByUf: (row) => row.performanceEligible && row.uf === label
+  };
+  if (filters[rawContext]) filtered = rows.filter(filters[rawContext]);
+  else filtered = rows.filter((row) => row.searchText && row.searchText.includes(normalizedLabel));
+  return { rows: filtered, label, context: chartMeasureDescription(rawContext, rawContext || 'Gráfico') };
+}
+function chartPreviewBaseRows(context) {
+  if (/^consolidatedBy/.test(context) || String(context).startsWith('performanceGauge:BA + SP')) return STATE.records.filter((row) => matchesFilters(row, { ...STATE.filters, source: 'all' }));
+  if (String(context).startsWith('dynamic:')) return STATE.filtered;
+  return STATE.filtered;
+}
+function filterPerformanceGaugeRows(rows, label) {
+  const n = normalizeText(label);
+  if (/elegive/.test(n)) return rows.filter((row) => row.performanceEligible);
+  if (/dentro/.test(n)) return rows.filter((row) => row.performanceEligible && row.ontimeStatus === true);
+  if (/fora/.test(n)) return rows.filter((row) => row.performanceEligible && (row.ontimeStatus === false || row.delayed));
+  if (/transito/.test(n)) return rows.filter((row) => row.transit && !row.performanceEligible && !row.delayed);
+  return rows;
+}
+function chartPreviewHtml(rows, label, context) {
+  if (!rows.length) return emptyState('Nenhum registro encontrado para este item do gráfico nos filtros atuais.');
+  const m = computeMetrics(rows);
+  const byStatus = countBy(rows, (row) => row.statusBucket || 'Sem status');
+  const byUf = countBy(rows, (row) => row.uf || 'Sem UF');
+  const body = rows.slice(0, 250).map((row) => recordRowHtml(row)).join('');
+  return `<div class="occurrence-detail-summary chart-preview-summary"><div><span>Item</span><strong>${escapeHtml(label)}</strong></div><div><span>Registros</span><strong>${formatInteger(rows.length)}</strong></div><div><span>Status principal</span><strong>${escapeHtml(topLabel(byStatus) || '-')}</strong></div><div><span>UF principal</span><strong>${escapeHtml(topLabel(byUf) || '-')}</strong></div></div><div class="mini-kpi-row chart-preview-kpis"><span><b>${formatInteger(m.totalNotes)}</b> notas</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.occurrences)}</b> ocorrências</span><span><b>${m.ontimeRate}%</b> ONTIME</span></div><p class="modal-note">Contabilização: ${escapeHtml(context)}. Clique em uma linha para abrir todos os campos. Use Exportar XLSX para a base completa ou Imprimir para a prévia.</p><div class="table-wrap occurrence-detail-table"><table class="data-table table-clickable"><thead><tr><th>Origem</th><th>Data / Agenda</th><th>Carga / NF</th><th>Cliente</th><th>Destino</th><th>Veículo / Motorista</th><th>Status</th><th>ONTIME</th><th>Ocorrência</th><th>Devolução</th></tr></thead><tbody>${body}</tbody></table></div>${rows.length > 250 ? `<div class="empty-state">Exibindo 250 de ${formatInteger(rows.length)} registros. Exporte o XLSX para a base completa.</div>` : ''}`;
+}
+function exportChartPreviewXlsx() {
+  const rows = STATE.chartPreviewRows || [];
+  if (!rows.length) { addAiMessage('Nenhum item de gráfico selecionado para exportar.'); return; }
+  downloadXlsx(`previa-grafico-${dateForFile(new Date())}.xlsx`, [
+    { name: 'Resumo', rows: [['Item', STATE.chartPreviewLabel], ['Contexto', STATE.chartPreviewContext], ['Registros', rows.length], ['Gerado em', formatDateTime(new Date())]] },
+    { name: 'Base', rows: buildExportRows(rows) }
+  ]);
+}
+function printChartPreview() {
+  const rows = STATE.chartPreviewRows || [];
+  if (!rows.length) return;
+  const title = `Prévia do gráfico - ${STATE.chartPreviewLabel}`;
+  const win = window.open('', '_blank', 'width=1100,height=800');
+  if (!win) { addAiMessage('O navegador bloqueou a janela de impressão. Permita pop-ups e tente novamente.'); return; }
+  win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#162636}h1{font-size:22px}.data-table{width:100%;border-collapse:collapse;font-size:11px}.data-table th,.data-table td{border:1px solid #d7e2ec;padding:6px;text-align:left}.occurrence-detail-summary,.mini-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.occurrence-detail-summary div,.mini-kpi-row span{border:1px solid #d7e2ec;border-radius:10px;padding:8px}@page{size:A4 landscape;margin:10mm}</style></head><body><h1>${escapeHtml(title)}</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${formatInteger(rows.length)} registro(s)</p>${chartPreviewHtml(rows, STATE.chartPreviewLabel, STATE.chartPreviewContext)}</body></html>`);
+  win.document.close(); win.focus(); window.setTimeout(() => { try { win.print(); } catch (_) {} }, 350);
 }
 
 function openOccurrenceDescriptionDetail(label) {
@@ -1898,8 +2066,8 @@ function buildScheduleExportRows(rows) {
 }
 function buildDynamicExportRows(rows) {
   const defs = getDynamicDimensionDefinitions();
-  const keyA = (DOM.dynamicMetricA && defs[DOM.dynamicMetricA.value]) ? DOM.dynamicMetricA.value : 'status';
-  const keyB = (DOM.dynamicMetricB && defs[DOM.dynamicMetricB.value]) ? DOM.dynamicMetricB.value : 'uf';
+  const keyA = defs[STATE.dynamicMetricA] ? STATE.dynamicMetricA : 'status';
+  const keyB = defs[STATE.dynamicMetricB] ? STATE.dynamicMetricB : 'uf';
   const dimA = defs[keyA], dimB = defs[keyB];
   const grouped = {};
   rows.forEach((row) => {

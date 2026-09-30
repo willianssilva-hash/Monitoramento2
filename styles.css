@@ -5390,3 +5390,76 @@ body[data-theme="dark"] .dynamic-stack {
 .dynamic-stack::before { display: none !important; }
 .choice-modal { padding: 0 !important; }
 .choice-modal .export-choice-grid { padding: 18px 20px 22px; }
+
+.dynamic-axis-block {
+  display: grid;
+  gap: 8px;
+}
+
+.dynamic-type-buttons,
+.dynamic-filter-chips,
+.dynamic-chip-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dynamic-type-btn,
+.dynamic-filter-chip {
+  border: 1px solid color-mix(in srgb, var(--blue) 14%, #ffffff);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: rgba(255,255,255,.58);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dynamic-type-btn.active,
+.dynamic-filter-chip.active {
+  color: #08351f;
+  border-color: color-mix(in srgb, var(--green) 44%, #ffffff);
+  background: color-mix(in srgb, var(--green) 22%, #ffffff);
+}
+
+.dynamic-filter-chips {
+  padding: 10px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--blue) 5%, #ffffff);
+}
+
+.dynamic-chip-group {
+  align-items: center;
+  width: 100%;
+}
+
+.dynamic-chip-group strong {
+  min-width: 110px;
+  color: var(--text);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.chart-preview-modal {
+  width: min(1180px, calc(100vw - 24px));
+}
+
+.chart-preview-summary,
+.chart-preview-kpis {
+  margin-bottom: 12px;
+}
+
+body[data-theme="dark"] .dynamic-type-btn,
+body[data-theme="dark"] .dynamic-filter-chip,
+body[data-theme="dark"] .dynamic-filter-chips {
+  background: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.12);
+}
+
+body[data-theme="dark"] .dynamic-type-btn.active,
+body[data-theme="dark"] .dynamic-filter-chip.active {
+  color: #eafff3;
+  background: rgba(82, 214, 142, .22);
+  border-color: rgba(82, 214, 142, .44);
+}

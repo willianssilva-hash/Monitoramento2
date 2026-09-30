@@ -56,7 +56,7 @@
           <div>
             <p class="eyebrow">Logística • Torre de Controle</p>
             <h1>Torre de Controle - Monitoramento</h1>
-            <p class="subtitle">Filial BA + Matriz SP • atualização automática a cada 10 minutos</p>
+            <p class="subtitle">Filial BA + Matriz SP • atualização automática a cada 15 minutos</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -473,34 +473,16 @@
               <div class="dynamic-info-controls" aria-label="Informação Dinâmica">
                 <div>
                   <h4>Informação Dinâmica</h4>
-                  <small>Selecione duas informações para montar um terceiro gráfico cruzado com insights em tempo real.</small>
+                  <small>Selecione duas informações nos botões abaixo para montar um terceiro gráfico cruzado com insights em tempo real.</small>
                 </div>
-                <label>
+                <div class="dynamic-axis-block">
                   <span>Informação 1</span>
-                  <select id="dynamicMetricA" class="dynamic-select">
-                    <option value="status">Status operacional</option>
-                    <option value="uf">UF</option>
-                    <option value="performance">Performance ONTIME</option>
-                    <option value="occurrence">Ocorrência</option>
-                    <option value="return">Devolução</option>
-                    <option value="transporter">Transportador</option>
-                    <option value="vehicle">Tipo de veículo</option>
-                    <option value="month">Mês</option>
-                  </select>
-                </label>
-                <label>
+                  <div id="dynamicTypeGroupA" class="dynamic-type-buttons" role="group" aria-label="Informação dinâmica 1"></div>
+                </div>
+                <div class="dynamic-axis-block">
                   <span>Informação 2</span>
-                  <select id="dynamicMetricB" class="dynamic-select">
-                    <option value="uf">UF</option>
-                    <option value="status">Status operacional</option>
-                    <option value="performance">Performance ONTIME</option>
-                    <option value="occurrence">Ocorrência</option>
-                    <option value="return">Devolução</option>
-                    <option value="transporter">Transportador</option>
-                    <option value="vehicle">Tipo de veículo</option>
-                    <option value="month">Mês</option>
-                  </select>
-                </label>
+                  <div id="dynamicTypeGroupB" class="dynamic-type-buttons" role="group" aria-label="Informação dinâmica 2"></div>
+                </div>
               </div>
               <div class="filter-actions report-actions">
                 <button class="btn btn-primary" id="exportDynamicReportBtn" type="button">Exportar relatório</button>
@@ -513,6 +495,7 @@
               <div class="dynamic-info-panel">
                 <div class="panel-header compact"><div><h3>Gráfico cruzado dinâmico</h3><small>Confronto automático das duas informações selecionadas.</small></div></div>
                 <div id="dynamicInfoChart" class="dynamic-cross-chart"></div>
+                <div id="dynamicFilterChips" class="dynamic-filter-chips" aria-label="Filtro rápido do gráfico dinâmico"></div>
                 <div id="dynamicInfoInsights" class="insight-list dynamic-insights"></div>
               </div>
             </article>
@@ -694,6 +677,21 @@
         <span>Gera uma planilha Excel com as tabelas e bases conforme os blocos selecionados.</span>
       </button>
     </div>
+  </dialog>
+
+  <dialog class="detail-modal chart-preview-modal" id="chartPreviewModal">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">Prévia resumida do gráfico</p>
+        <h2 id="chartPreviewTitle">Resumo</h2>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-small" id="chartPreviewExport" type="button">Exportar XLSX</button>
+        <button class="btn btn-small" id="chartPreviewPrint" type="button">Imprimir</button>
+        <button class="modal-close" id="chartPreviewClose" type="button" aria-label="Fechar">×</button>
+      </div>
+    </div>
+    <div id="chartPreviewBody" class="modal-body"></div>
   </dialog>
 
   <dialog class="detail-modal occurrence-detail-modal" id="occurrenceDetailModal">
