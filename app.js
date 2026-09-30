@@ -523,13 +523,13 @@ function showBanner(message, type = 'warn') { if (!message) { DOM.alertBanner.cl
 function renderGeneral() {
   const metrics = computeMetrics(STATE.filtered);
   document.getElementById('generalKpis').innerHTML = [
-    kpiCard('Total de notas', formatInteger(metrics.totalNotes), `${formatInteger(metrics.totalLoads)} cargas únicas`, '▦', '', 'all'),
+    kpiCard('Total de notas', formatInteger(metrics.totalNotes), `${formatInteger(metrics.totalLoads)} cargas únicas`, '📄', '', 'all'),
     kpiCard('Cargas em atraso', formatInteger(metrics.delayed), `${percent(metrics.delayed, metrics.totalRecords)} da seleção`, '⚠', 'danger', 'delayed'),
-    kpiCard('Cargas entregues', formatInteger(metrics.delivered), `${formatInteger(metrics.waitingUnload)} aguardando descarga`, '✓', 'success', 'delivered'),
+    kpiCard('Cargas entregues', formatInteger(metrics.delivered), `${formatInteger(metrics.waitingUnload)} aguardando descarga`, '✅', 'success', 'delivered'),
     kpiCard('Motoristas em trânsito', formatInteger(metrics.driversInTransit), `${formatInteger(metrics.inTransit)} veículos/cargas em trânsito`, '🚚', 'info', 'transit'),
-    kpiCard('Ocorrências', formatInteger(metrics.occurrences), `${formatInteger(metrics.occurrenceUfs)} UFs com registro`, '!', 'warn', 'occurrence'),
-    kpiCard('Devoluções', formatInteger(metrics.returns), `${formatInteger(metrics.returnRegions)} regiões impactadas`, '↩', 'purple', 'return'),
-    kpiCard('Performance ONTIME', `${metrics.ontimeRate}%`, `${formatInteger(metrics.performanceEligible)} notas contabilizadas`, '◉', metrics.ontimeRate >= 90 ? 'success' : metrics.ontimeRate >= 75 ? 'warn' : 'danger', null),
+    kpiCard('Ocorrências', formatInteger(metrics.occurrences), `${formatInteger(metrics.occurrenceUfs)} UFs com registro`, '🚨', 'warn', 'occurrence'),
+    kpiCard('Devoluções', formatInteger(metrics.returns), `${formatInteger(metrics.returnRegions)} regiões impactadas`, '↩️', 'purple', 'return'),
+    kpiCard('Performance ONTIME', `${metrics.ontimeRate}%`, `${formatInteger(metrics.performanceEligible)} notas contabilizadas`, '🎯', metrics.ontimeRate >= 90 ? 'success' : metrics.ontimeRate >= 75 ? 'warn' : 'danger', null),
     kpiCard('Agendas D+2', formatInteger(metrics.d2Agendas), `${formatInteger(metrics.todayAgendas)} para hoje`, '📅', 'info', null)
   ].join('');
   renderScheduleCards();
@@ -682,9 +682,9 @@ function renderPerformance() {
   const notCountedTransit = rows.filter((row) => row.transit && !row.performanceEligible && !row.delayed).length;
   const rate = eligible.length ? Math.round((ontime / eligible.length) * 100) : 0;
   document.getElementById('performanceKpis').innerHTML = [
-    kpiCard('Percentual consolidado', `${consolidatedRate}%`, `BA + SP • ${formatInteger(consolidatedEligible.length)} notas elegíveis`, '◎', consolidatedRate >= 90 ? 'success' : consolidatedRate >= 75 ? 'warn' : 'danger'),
-    kpiCard(`Notas ${STATE.filters.source}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', 'Σ'),
-    kpiCard('Dentro do prazo', formatInteger(ontime), `${rate}% de aderência da unidade`, '✓', 'success'),
+    kpiCard('Percentual consolidado', `${consolidatedRate}%`, `BA + SP • ${formatInteger(consolidatedEligible.length)} notas elegíveis`, '🎯', consolidatedRate >= 90 ? 'success' : consolidatedRate >= 75 ? 'warn' : 'danger'),
+    kpiCard(`Notas ${STATE.filters.source}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', '🧾'),
+    kpiCard('Dentro do prazo', formatInteger(ontime), `${rate}% de aderência da unidade`, '✅', 'success'),
     kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base ONTIME`, '⚠', 'danger', 'delayed'),
     kpiCard('Em trânsito não contado', formatInteger(notCountedTransit), 'Dentro do prazo ou sem fechamento', '🚚', 'info', 'transit')
   ].join('');
@@ -707,8 +707,8 @@ function renderConsolidatedPerformance(rows) {
   const transit = rows.filter((row) => row.transit && !row.performanceEligible).length;
   const kpis = document.getElementById('performanceConsolidatedKpis');
   if (kpis) kpis.innerHTML = [
-    kpiCard('Performance consolidada', `${rate}%`, `${formatInteger(eligible.length)} notas elegíveis BA + SP`, '◎', rate >= 90 ? 'success' : rate >= 75 ? 'warn' : 'danger'),
-    kpiCard('Dentro do prazo', formatInteger(ontime), 'Base consolidada', '✓', 'success'),
+    kpiCard('Performance consolidada', `${rate}%`, `${formatInteger(eligible.length)} notas elegíveis BA + SP`, '🎯', rate >= 90 ? 'success' : rate >= 75 ? 'warn' : 'danger'),
+    kpiCard('Dentro do prazo', formatInteger(ontime), 'Base consolidada', '✅', 'success'),
     kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base`, '⚠', 'danger'),
     kpiCard('Em trânsito não contado', formatInteger(transit), 'Sem fechamento de performance', '🚚', 'info')
   ].join('');
@@ -744,10 +744,10 @@ function renderOccurrences() {
   const rows = STATE.filtered.filter((row) => row.hasOccurrence);
   const byUf = countBy(rows, (row) => row.uf || 'Sem UF'), bySector = countBy(rows, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'), descriptions = countBy(rows, (row) => simplifyDescription(row.ocorrencia || row.occurrenceText));
   document.getElementById('occurrenceKpis').innerHTML = [
-    kpiCard('Total de ocorrências', formatInteger(rows.length), `${formatInteger(Object.keys(byUf).length)} UFs impactadas`, '⚠', 'warn', 'occurrence'),
+    kpiCard('Total de ocorrências', formatInteger(rows.length), `${formatInteger(Object.keys(byUf).length)} UFs impactadas`, '🚨', 'warn', 'occurrence'),
     kpiCard('Setores envolvidos', formatInteger(Object.keys(bySector).length), topLabel(bySector) ? `Principal: ${topLabel(bySector)}` : 'Sem setor informado', '▤', 'info'),
     kpiCard('Motoristas / placas', formatInteger(Object.keys(byDriver).length), topLabel(byDriver) ? `Maior recorrência: ${topLabel(byDriver)}` : 'Sem motorista informado', '🚚', 'purple'),
-    kpiCard('Ocorrências em atraso', formatInteger(rows.filter((row) => row.delayed).length), 'Com status fora do prazo', '!', 'danger', 'delayed')
+    kpiCard('Ocorrências em atraso', formatInteger(rows.filter((row) => row.delayed).length), 'Com status fora do prazo', '⏰', 'danger', 'delayed')
   ].join('');
   renderBarList('occurrenceUf', topEntries(byUf, 10), { empty: 'Sem ocorrências por UF.', colorResolver: () => 'warn', actionResolver: (label) => ({ action: 'uf', value: label }) });
   renderBarList('occurrenceSector', topEntries(bySector, 10), { empty: 'Sem setor responsável informado.', colorResolver: () => 'purple' });
@@ -763,10 +763,10 @@ function renderReturns() {
   const byReason = countBy(rows, (row) => cleanLabel(row.returnReason) || 'Sem motivo informado');
   const byRegion = countBy(rows, (row) => row.region || 'Sem região'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa');
   document.getElementById('returnKpis').innerHTML = [
-    kpiCard('Total de devoluções', formatInteger(rows.length), `${percent(rows.length, STATE.filtered.length)} da seleção`, '↩', 'purple', 'return'),
+    kpiCard('Total de devoluções', formatInteger(rows.length), `${percent(rows.length, STATE.filtered.length)} da seleção`, '↩️', 'purple', 'return'),
     kpiCard('Devolução parcial', formatInteger(rows.filter((row) => row.returnType === 'Parcial').length), 'Tipo fiel: Parcial', '½', 'info'),
     kpiCard('Devolução total', formatInteger(rows.filter((row) => row.returnType === 'Total').length), 'Tipo fiel: Total', '1', 'warn'),
-    kpiCard('Com observações', formatInteger(rows.filter((row) => isPresent(row.observacao)).length), 'Notas com OBS para análise', '✎', 'success')
+    kpiCard('Com observações', formatInteger(rows.filter((row) => isPresent(row.observacao)).length), 'Notas com OBS para análise', '📝', 'success')
   ].join('');
   renderBarList('returnTypes', topEntries(byType, 2), { empty: 'Sem tipo Total/Parcial informado.', colorResolver: () => 'purple' });
   renderBarList('returnReasons', topEntries(byReason, 10), { empty: 'Sem motivos de devolução.', colorResolver: () => 'warn' });
@@ -787,7 +787,7 @@ function renderExtras() {
     kpiCard('Valor NF nos filtros', formatCurrency(totalValue), `${formatInteger(rows.length)} registros`, 'R$', 'info'),
     kpiCard('Cubagem total', cubic ? cubic.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '0', 'm³ calculado da planilha', 'm³', 'success'),
     kpiCard('Manifestos fechados', formatInteger(manifestClosed), `${percent(manifestClosed, rows.length)} da seleção`, '▣', 'warn'),
-    kpiCard('Canhotos digitalizados', formatInteger(canhotoOk), `${percent(canhotoOk, rows.length)} da seleção`, '✓', 'purple')
+    kpiCard('Canhotos digitalizados', formatInteger(canhotoOk), `${percent(canhotoOk, rows.length)} da seleção`, '✅', 'purple')
   ].join('');
   renderBarList('extrasTransporters', topEntries(countBy(rows, (row) => cleanLabel(row.transportadora) || 'Sem transportador'), 12), { empty: 'Sem transportadores.', colorResolver: () => 'info' });
   renderBarList('extrasCargoTypes', topEntries(countBy(rows, (row) => cleanLabel(row.tpCarga) || 'Sem tipo'), 10), { empty: 'Sem tipos de carga.', colorResolver: () => 'success' });

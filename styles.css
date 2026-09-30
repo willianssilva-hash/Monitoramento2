@@ -4692,3 +4692,63 @@ body[data-theme="dark"] .performance-gauge-card .gauge-ring::before {
     width: min(72vw, 190px) !important;
   }
 }
+
+/* Cartões: remover pontos e usar ícones desfocados como marca d'água */
+.kpi-grid .kpi-card .kpi-icon,
+.kpi-card .kpi-icon {
+  position: absolute !important;
+  right: 18px !important;
+  bottom: 10px !important;
+  top: auto !important;
+  left: auto !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--blue) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: clamp(42px, 4.8vw, 76px) !important;
+  line-height: 1 !important;
+  opacity: .12 !important;
+  filter: blur(1.4px) saturate(1.08) !important;
+  transform: rotate(-8deg) !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+.kpi-card.success .kpi-icon { color: var(--positive) !important; background: transparent !important; box-shadow: none !important; }
+.kpi-card.danger .kpi-icon { color: var(--negative) !important; background: transparent !important; box-shadow: none !important; }
+.kpi-card.warn .kpi-icon { color: var(--warning) !important; background: transparent !important; box-shadow: none !important; }
+.kpi-card.info .kpi-icon,
+.kpi-card.purple .kpi-icon { color: var(--blue-2) !important; background: transparent !important; box-shadow: none !important; }
+
+.kpi-card .kpi-top,
+.kpi-card .kpi-value,
+.kpi-card .kpi-subtitle {
+  position: relative;
+  z-index: 1;
+}
+
+.kpi-card .kpi-top {
+  padding-right: 54px;
+}
+
+body[data-theme="dark"] .kpi-card .kpi-icon {
+  opacity: .16 !important;
+  filter: blur(1.6px) saturate(1.12) !important;
+}
+
+@media (max-width: 760px) {
+  .kpi-grid .kpi-card .kpi-icon,
+  .kpi-card .kpi-icon {
+    right: 14px !important;
+    bottom: 8px !important;
+    font-size: 46px !important;
+  }
+  .kpi-card .kpi-top {
+    padding-right: 42px;
+  }
+}
