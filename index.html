@@ -627,23 +627,35 @@
   </div>
 
   <button class="ai-fab" id="aiFab" type="button" aria-label="Abrir Monitor IA">
-    <span class="ai-fab-icon">🤖</span>
+    <span class="ai-truck-face ai-truck-mini" aria-hidden="true">
+      <span class="truck-eye left"></span>
+      <span class="truck-eye right"></span>
+      <span class="truck-mouth"></span>
+      <span class="truck-wheel one"></span>
+      <span class="truck-wheel two"></span>
+    </span>
     <span>Monitor IA</span>
   </button>
 
   <section class="monitor-panel floating-monitor-panel" aria-label="Monitor IA">
     <div class="monitor-header">
       <div>
-        <span class="pulse-dot"></span>
+        <span class="ai-truck-face" aria-hidden="true">
+          <span class="truck-eye left"></span>
+          <span class="truck-eye right"></span>
+          <span class="truck-mouth"></span>
+          <span class="truck-wheel one"></span>
+          <span class="truck-wheel two"></span>
+        </span>
         <strong>Monitor IA</strong>
       </div>
       <small>online</small>
     </div>
     <div class="monitor-messages" id="monitorMessages" aria-live="polite"></div>
     <div class="monitor-chips" aria-label="Perguntas rápidas">
-      <button type="button" data-question="Gerar relatório consolidado do período selecionado">Relatório</button>
-      <button type="button" data-question="Quais cargas estão em atraso?">Atrasos</button>
-      <button type="button" data-question="Onde encontro as devoluções por motivo?">Guia</button>
+      <button type="button" data-question="Como utilizar o painel?">Como usar</button>
+      <button type="button" data-question="Gerar relatório XLSX com OF, Nota Fiscal, Motorista, previsão de entrega e status de entrega">XLSX por campos</button>
+      <button type="button" data-question="Quais cargas estão em atraso e qual ação tomar?">Atrasos</button>
     </div>
     <form class="monitor-form" id="monitorForm">
       <input id="monitorInput" type="text" autocomplete="off" placeholder="Pergunte sobre cargas, NFs, atrasos..." aria-label="Mensagem para o Monitor IA" />

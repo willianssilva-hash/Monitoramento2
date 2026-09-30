@@ -75,7 +75,7 @@ const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard
 
 window.addEventListener('DOMContentLoaded', () => {
   cacheDom(); initTheme(); initPalette(); initCompactMode(); loadMonitorMemory(); bindEvents(); installGvizFallback(); populateSourceFilter();
-  addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 15 minutos. Agora aprendo com suas solicitações, gero insights em tempo real e adapto minhas respostas aos temas que você mais consulta.');
+  addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 15 minutos. Posso explicar como usar cada aba, sugerir ações para dúvidas operacionais e gerar relatórios XLSX com os campos que você pedir, por exemplo: OF, Nota Fiscal, Motorista, previsão de entrega e status.');
   loadData({ manual: false });
   loadBrazilGeoJson();
   if (countdownTimer) window.clearInterval(countdownTimer);
@@ -763,7 +763,14 @@ function renderMonthlyComboDashboard(containerId, trend) {
 }
 
 function buildMonthlyTrend(rows) {
-  const grouped = groupBy(rows.filter((row) => row.referenceDate), (row) => `${row.referenceDate.getFullYear()}-${String(row.referenceDate.getMonth() + 1).padStart(2, '0')}`);
+  const today = new Date();
+  const currentMonthLimit = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+  const validRows = rows.filter((row) => {
+    if (!row.referenceDate) return false;
+    const rowMonth = new Date(row.referenceDate.getFullYear(), row.referenceDate.getMonth(), 1).getTime();
+    return rowMonth <= currentMonthLimit;
+  });
+  const grouped = groupBy(validRows, (row) => `${row.referenceDate.getFullYear()}-${String(row.referenceDate.getMonth() + 1).padStart(2, '0')}`);
   return Object.entries(grouped)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-8)
@@ -1101,22 +1108,20 @@ function renderDynamicInfo(rows) {
 function buildDynamicMatrix(rows, dimA, dimB) {
   const groups = {};
   rows.forEach((row) => {
-    const a = simplifyDescription(dimA.getter(row));
-    const b = simplifyDescription(dimB.getter(row));
+    const a = simplifyDescription(dimA.getter(row)) || 'Sem informação';
+    const b = simplifyDescription(dimB.getter(row)) || 'Sem informação';
     if (!groups[a]) groups[a] = { total: 0, values: {} };
     groups[a].total += 1;
     groups[a].values[b] = (groups[a].values[b] || 0) + 1;
   });
   const hiddenA = STATE.dynamicFiltersA || new Set();
   const hiddenB = STATE.dynamicFiltersB || new Set();
-  const sortLabels = (entries, dim, limit) => {
-    const sorted = entries.sort((a, b) => dim.sort ? dim.sort(a[0], b[0]) : b[1].total ? b[1].total - a[1].total : b[1] - a[1]);
-    return sorted.slice(0, limit);
-  };
-  const allRows = sortLabels(Object.entries(groups), dimA, 10).map(([label, item]) => ({ label, total: item.total, values: item.values }));
+  const sortRows = (entries, dim) => entries.sort((a, b) => dim.sort ? dim.sort(a[0], b[0]) : (b[1].total || 0) - (a[1].total || 0));
+  const sortColumns = (entries, dim) => entries.sort((a, b) => dim.sort ? dim.sort(a[0], b[0]) : (b[1] || 0) - (a[1] || 0));
+  const allRows = sortRows(Object.entries(groups), dimA).map(([label, item]) => ({ label, total: item.total, values: item.values }));
   const bTotals = {};
   allRows.forEach((item) => Object.entries(item.values).forEach(([label, value]) => { bTotals[label] = (bTotals[label] || 0) + value; }));
-  const allColumns = (dimB.sort ? Object.entries(bTotals).sort(([a], [b]) => dimB.sort(a, b)) : topEntries(bTotals, 8)).slice(0, 8).map(([label]) => label);
+  const allColumns = sortColumns(Object.entries(bTotals), dimB).map(([label]) => label);
   const visibleRows = allRows.filter((row) => !hiddenA.has(row.label));
   const visibleColumns = allColumns.filter((label) => !hiddenB.has(label));
   return { rows: visibleRows, columns: visibleColumns, allRows, allColumns };
@@ -1133,15 +1138,21 @@ function dynamicChartHtml(matrix, dimA, dimB) {
   return dynamicBarsHtml(matrix, dimA, dimB);
 }
 function dynamicBarsHtml(matrix, dimA, dimB) {
-  if (!matrix.rows.length) return emptyState('Sem dados para cruzar as informações selecionadas. Reative botões do filtro rápido.');
+  if (!matrix.rows.length || !matrix.columns.length) return emptyState('Sem dados para cruzar as informações selecionadas. Reative botões do filtro rápido.');
   const max = Math.max(1, ...matrix.rows.map((row) => row.total));
-  return `<div class="dynamic-bars-chart">${matrix.rows.map((row, index) => {
-    const width = Math.max(4, Math.round((row.total / max) * 100));
-    const topColumn = Object.entries(row.values).filter(([column]) => matrix.columns.includes(column)).sort((a, b) => b[1] - a[1])[0];
-    const extra = topColumn ? `Principal ${dimB.label}: ${topColumn[0]} (${formatInteger(topColumn[1])})` : 'Sem detalhamento';
-    const summary = `<strong>${escapeHtml(row.label)}</strong><br>${formatInteger(row.total)} registro(s)<br>${escapeHtml(extra)}<br><small>Contabilização: ${escapeHtml(dimA.measure)} cruzado com ${escapeHtml(dimB.measure)}</small>`;
-    return `<div class="dynamic-bar-item" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}`)}" data-summary="${escapeHtml(summary)}"><span>${escapeHtml(truncate(row.label, 30))}</span><i><em style="width:${width}%; background:${chartColor(row.label, index)}"></em><b>${formatInteger(row.total)}</b></i><small>${escapeHtml(extra)}</small></div>`;
-  }).join('')}</div>`;
+  return `<div class="dynamic-cross-bars" role="list" aria-label="Gráfico cruzado ${escapeHtml(dimA.label)} por ${escapeHtml(dimB.label)}">${matrix.rows.map((row, rowIndex) => {
+    const rowWidth = Math.max(8, Math.round((row.total / max) * 100));
+    const visibleValues = matrix.columns.map((column) => ({ column, value: row.values[column] || 0 })).filter((item) => item.value > 0);
+    const summary = `<strong>${escapeHtml(row.label)}</strong><br>${formatInteger(row.total)} registro(s)<br>${visibleValues.map((item) => `${escapeHtml(item.column)}: ${formatInteger(item.value)}`).join('<br>')}<br><small>Contabilização: ${escapeHtml(dimA.measure)} cruzado com ${escapeHtml(dimB.measure)}</small>`;
+    const segments = visibleValues.map((item, index) => {
+      const pct = row.total ? Math.max(5, (item.value / row.total) * 100) : 0;
+      const label = `${item.column}: ${formatInteger(item.value)}`;
+      const detailSummary = `<strong>${escapeHtml(row.label)} x ${escapeHtml(item.column)}</strong><br>${formatInteger(item.value)} registro(s)<br><small>${Math.round((item.value / row.total) * 100)}% da linha ${escapeHtml(row.label)}</small><br><small>Contabilização: ${escapeHtml(dimA.measure)} cruzado com ${escapeHtml(dimB.measure)}</small>`;
+      return `<button type="button" class="dynamic-cross-segment" style="width:${pct.toFixed(2)}%;background:${chartColor(item.column, index)}" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}|||${dimB.key}:${item.column}`)}" data-summary="${escapeHtml(detailSummary)}" aria-label="${escapeHtml(row.label)} x ${escapeHtml(label)}"><b>${formatInteger(item.value)}</b></button>`;
+    }).join('');
+    const chips = visibleValues.map((item, index) => `<button type="button" class="dynamic-cross-chip" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}|||${dimB.key}:${item.column}`)}" data-summary="${escapeHtml(`<strong>${row.label} x ${item.column}</strong><br>${formatInteger(item.value)} registro(s)<br><small>Clique para abrir a prévia resumida.</small>`)}"><i style="background:${chartColor(item.column, index)}"></i><span>${escapeHtml(truncate(item.column, 28))}</span><b>${formatInteger(item.value)}</b></button>`).join('');
+    return `<article class="dynamic-cross-row" role="listitem" data-summary="${escapeHtml(summary)}"><div class="dynamic-cross-head"><strong>${escapeHtml(truncate(row.label, 36))}</strong><span>${formatInteger(row.total)} registro(s)</span></div><div class="dynamic-cross-track" style="--roww:${rowWidth}%">${segments}</div><div class="dynamic-cross-values">${chips}</div></article>`;
+  }).join('')}</div><div class="dynamic-legend dynamic-cross-legend">${matrix.columns.map((column, index) => `<span><i style="background:${chartColor(column, index)}"></i>${escapeHtml(truncate(column, 24))}</span>`).join('')}</div>`;
 }
 function dynamicRankingHtml(matrix, dimA, dimB) {
   const pairs = [];
@@ -1149,25 +1160,25 @@ function dynamicRankingHtml(matrix, dimA, dimB) {
     const value = row.values[column] || 0;
     if (value) pairs.push({ a: row.label, b: column, value });
   }));
-  pairs.sort((a, b) => b.value - a.value);
+  pairs.sort((a, b) => b.value - a.value || compareValues(a.a, b.a) || compareValues(a.b, b.b));
   if (!pairs.length) return emptyState('Sem combinações para o ranking atual.');
   const max = Math.max(1, ...pairs.map((item) => item.value));
-  return `<div class="dynamic-ranking-chart">${pairs.slice(0, 12).map((item, index) => {
+  return `<div class="dynamic-ranking-chart dynamic-ranking-full">${pairs.map((item, index) => {
     const width = Math.max(5, Math.round((item.value / max) * 100));
     const summary = `<strong>${escapeHtml(item.a)} x ${escapeHtml(item.b)}</strong><br>${formatInteger(item.value)} registro(s)<br><small>Contabilização: ${escapeHtml(dimA.measure)} cruzado com ${escapeHtml(dimB.measure)}</small>`;
-    return `<div class="dynamic-ranking-row" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${item.a}|||${dimB.key}:${item.b}`)}" data-summary="${escapeHtml(summary)}"><span>${escapeHtml(truncate(item.a, 22))}</span><small>${escapeHtml(truncate(item.b, 22))}</small><i><em style="width:${width}%; background:${chartColor(item.b, index)}"></em><b>${formatInteger(item.value)}</b></i></div>`;
+    return `<div class="dynamic-ranking-row" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${item.a}|||${dimB.key}:${item.b}`)}" data-summary="${escapeHtml(summary)}"><span title="${escapeHtml(item.a)}">${escapeHtml(truncate(item.a, 24))}</span><small title="${escapeHtml(item.b)}">${escapeHtml(truncate(item.b, 24))}</small><i><em style="width:${width}%; background:${chartColor(item.b, index)}"></em><b>${formatInteger(item.value)}</b></i></div>`;
   }).join('')}</div>`;
 }
 
 function dynamicMatrixHtml(matrix, dimA, dimB) {
   if (!matrix.rows.length || !matrix.columns.length) return emptyState('Sem dados para cruzar as informações selecionadas. Reative botões do filtro rápido.');
   const max = Math.max(1, ...matrix.rows.map((row) => row.total));
-  return `<div class="dynamic-matrix"><div class="dynamic-matrix-head"><span>${escapeHtml(dimA.label)}</span><span>${escapeHtml(dimB.label)}</span><b>Total</b></div>${matrix.rows.map((row) => {
+  return `<div class="dynamic-matrix dynamic-matrix-full"><div class="dynamic-matrix-head"><span>${escapeHtml(dimA.label)}</span><span>${escapeHtml(dimB.label)}</span><b>Total</b></div>${matrix.rows.map((row) => {
     const segments = matrix.columns.map((column, index) => {
       const value = row.values[column] || 0;
       const pct = row.total ? Math.round((value / row.total) * 100) : 0;
       const summary = `<strong>${escapeHtml(row.label)} x ${escapeHtml(column)}</strong><br>${formatInteger(value)} registro(s)<br><small>${pct}% da linha ${escapeHtml(row.label)}</small><br><small>Contabilização: ${escapeHtml(dimA.measure)} Cruzado com: ${escapeHtml(dimB.measure)}</small><br><small>Clique para abrir a prévia resumida.</small>`;
-      return `<span style="width:${Math.max(value ? 6 : 0, pct)}%; background:${chartColor(column, index)}" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}|||${dimB.key}:${column}`)}" data-summary="${escapeHtml(summary)}"></span>`;
+      return `<span style="width:${Math.max(value ? 6 : 0, pct)}%; background:${chartColor(column, index)}" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}|||${dimB.key}:${column}`)}" data-summary="${escapeHtml(summary)}">${value ? `<b>${formatInteger(value)}</b>` : ''}</span>`;
     }).join('');
     return `<div class="dynamic-matrix-row" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}`)}" data-summary="${escapeHtml(`<strong>${row.label}</strong><br>${formatInteger(row.total)} registro(s)<br><small>Contabilização: ${dimA.measure}</small><br><small>Clique para abrir a prévia resumida.</small>`)}"><strong>${escapeHtml(truncate(row.label, 30))}</strong><div class="dynamic-stack" style="--w:${Math.max(6, Math.round((row.total / max) * 100))}%">${segments}</div><b>${formatInteger(row.total)}</b></div>`;
   }).join('')}<div class="dynamic-legend">${matrix.columns.map((column, index) => `<span><i style="background:${chartColor(column, index)}"></i>${escapeHtml(truncate(column, 24))}</span>`).join('')}</div></div>`;
@@ -1931,15 +1942,32 @@ function renderTicker() {
   const delayed = rows.filter((row) => row.delayed), occurrencesToday = rows.filter((row) => row.hasOccurrence && isSameDay(row.referenceDate, today)), returns = rows.filter((row) => row.hasReturn);
   const items = [`🕒 ${sourceLabel} • atualizado ${STATE.lastUpdated ? formatDateTime(STATE.lastUpdated) : '--'} • ${formatInteger(rows.length)} registros`, `📅 ${formatInteger(todayAgendas.length)} agenda(s) para hoje`, `⏭️ ${formatInteger(d2Agendas.length)} agenda(s) até D+2`, `🚨 ${formatInteger(delayed.length)} carga(s) fora do prazo`, `⚠️ ${formatInteger(occurrencesToday.length)} ocorrência(s) do dia`, `↩️ ${formatInteger(returns.length)} devolução(ões)`];
   const weather = buildWeatherHeadline(); if (weather) items.push(`🌦️ ${weather}`);
-  const next = d2Agendas.slice(0, 4).map((row) => {
-    const nf = row.notaFiscal ? `NF ${row.notaFiscal}` : 'NF -';
-    const of = row.of ? `OF ${row.of}` : 'OF -';
-    const driver = row.motorista || 'motorista não informado';
-    const plate = row.placa || 'placa não informada';
-    const date = formatDate(row.agendaDate || row.previsaoEntregaDate) || 'sem data';
-    return `${date} • ${row.uf || 'UF'} • ${of} • ${nf} • ${driver} • ${plate}`;
-  }).filter(Boolean).join('  |  '); if (next) items.push(`🔎 Próximas agendas: ${next}`);
+  const next = buildUnifiedAgendaTicker(d2Agendas, 4); if (next) items.push(`🔎 Próximas agendas: ${next}`);
   track.innerHTML = items.map((item) => `<span>${escapeHtml(item)}</span>`).join('');
+}
+function buildUnifiedAgendaTicker(rows, limit = 4) {
+  const groups = new Map();
+  rows
+    .slice()
+    .sort((a, b) => (a.agendaDate || a.previsaoEntregaDate || 0) - (b.agendaDate || b.previsaoEntregaDate || 0))
+    .forEach((row) => {
+      const date = formatDate(row.agendaDate || row.previsaoEntregaDate) || 'sem data';
+      const plate = cleanLabel(row.placa) || 'placa não informada';
+      const driver = cleanLabel(row.motorista) || 'motorista não informado';
+      const key = `${date}|||${normalizeText(plate)}|||${normalizeText(driver)}`;
+      if (!groups.has(key)) groups.set(key, { date, plate, driver, ufs: new Set(), nfs: new Set(), ofs: new Set() });
+      const item = groups.get(key);
+      if (row.uf) item.ufs.add(row.uf);
+      if (row.notaFiscal) item.nfs.add(row.notaFiscal);
+      if (row.of) item.ofs.add(row.of);
+    });
+  return Array.from(groups.values()).slice(0, limit).map((item) => {
+    const nfs = Array.from(item.nfs).slice(0, 8).join(', ') || '-';
+    const ofs = Array.from(item.ofs).slice(0, 5).join(', ') || '-';
+    const extraNfs = item.nfs.size > 8 ? ` +${item.nfs.size - 8}` : '';
+    const uf = Array.from(item.ufs).join('/') || 'UF';
+    return `Agenda ${item.date} • ${uf} • Placa ${item.plate} • Motorista ${item.driver} • NFs ${nfs}${extraNfs} • OFs ${ofs}`;
+  }).join('  |  ');
 }
 async function fetchWeather() {
   const weather = {};
@@ -1971,7 +1999,8 @@ function monitorTopic(question) {
   if (/(ontime|performance|sla)/.test(q)) return 'performance';
   if (/(agenda|hoje|amanha|d 2|proxim)/.test(q)) return 'agendas';
   if (/(motorista|placa|veiculo|veículo|transport)/.test(q)) return 'transportes';
-  if (/(relatorio|relatório|export|xlsx|pdf)/.test(q)) return 'relatórios';
+  if (/(relatorio|relatório|export|xlsx|pdf|excel|planilha)/.test(q)) return 'relatórios';
+  if (/(ajuda|guia|manual|como usar|utilizar|duvida|dúvida|solucao|solução)/.test(q)) return 'ajuda';
   return 'geral';
 }
 function rememberMonitorInteraction(question) {
@@ -2002,13 +2031,133 @@ function updateMonitorRealtimeInsights() {
 function askMonitor(question) {
   const topic = rememberMonitorInteraction(question);
   addUserMessage(question);
-  const response = `${answerQuestion(question)}\n\n${monitorLearningNote(topic)}`;
+  const generatedReport = maybeGenerateAiRequestedXlsx(question);
+  const response = `${generatedReport ? generatedReport.message : answerQuestion(question)}\n\n${monitorLearningNote(topic)}`;
   window.setTimeout(() => addAiMessage(response), 180);
+}
+function maybeGenerateAiRequestedXlsx(question) {
+  const q = normalizeText(question);
+  const guideOnly = /(como\s+(usar|utilizar|funciona|navegar|exportar|gerar)|onde|guia|manual|ajuda|duvida|duvidas|dúvida|dúvidas)/.test(q) && !/(preciso|quero|gerar\s+relatorio|gerar\s+relatório|xlsx\s+com|excel\s+com|planilha\s+com|relatorio\s+com|relatório\s+com|informacoes\s+de|informações\s+de|campos?\s+de|colunas?\s+de)/.test(q);
+  const wantsReport = /(xlsx|excel|planilha|exportar|baixar|download|gerar\s+relatorio|gerar\s+relatório|preciso\s+de\s+(um\s+)?relatorio|preciso\s+de\s+(um\s+)?relatório|relatorio\s+com|relatório\s+com|informacoes\s+de|informações\s+de|campos?\s+de|colunas?\s+de)/.test(q);
+  if (!wantsReport || guideOnly) return null;
+  const columns = parseAiRequestedColumns(question);
+  if (!columns.length && !/(xlsx|excel|planilha|exportar|baixar|download|gerar\s+relatorio|gerar\s+relatório)/.test(q)) return null;
+  if (!columns.length) {
+    if (!STATE.filtered.length) return { message: 'Não encontrei registros nos filtros atuais para gerar o XLSX. Ajuste os filtros ou peça a base completa.' };
+    exportQuickReportXlsx();
+    return { message: `Gerei um relatório XLSX consolidado com resumo, status, UFs e base dos ${formatInteger(STATE.filtered.length)} registro(s) filtrados. Se quiser colunas específicas, peça assim: “gerar XLSX com OF, Nota Fiscal, Motorista, Previsão de Entrega e Status”.` };
+  }
+  const rows = filterRowsForAiReport(question);
+  if (!rows.length) return { message: 'Entendi os campos solicitados, mas não encontrei registros compatíveis nos filtros atuais. Tente limpar filtros ou pedir “base completa”.' };
+  const table = buildAiRequestedReportRows(rows, columns);
+  const filename = `monitor-ia-${columns.map((col) => col.key).slice(0, 4).join('-')}-${dateForFile(new Date())}.xlsx`;
+  downloadXlsx(filename, [
+    { name: 'Resumo', rows: buildAiReportSummaryRows(question, rows, columns) },
+    { name: 'Relatorio IA', rows: table }
+  ]);
+  return { message: `Pronto! Busquei a base ${aiReportScopeText(question)} e gerei o XLSX com ${formatInteger(rows.length)} registro(s) e as colunas: ${columns.map((col) => col.label).join(', ')}.` };
+}
+function aiReportColumnDefinitions() {
+  return [
+    { key: 'origem', label: 'Origem', patterns: [/\borigem\b/, /unidade/, /filial|matriz/], getter: (row) => row.source || '' },
+    { key: 'of', label: 'OF', patterns: [/\bof\b/, /ordem\s+de\s+frete/, /numero\s+da\s+carga/, /n\s*carga/], getter: (row) => row.of || '' },
+    { key: 'nf', label: 'Nota Fiscal', patterns: [/nota\s+fiscal/, /\bnf\b/, /nfs|notas\s+fiscais/], getter: (row) => row.notaFiscal || '' },
+    { key: 'motorista', label: 'Motorista', patterns: [/motorista/, /condutor/, /driver/], getter: (row) => row.motorista || '' },
+    { key: 'placa', label: 'Placa', patterns: [/placa/, /cavalo/], getter: (row) => row.placa || '' },
+    { key: 'previsao', label: 'Data de previsão de entrega', patterns: [/previs[aã]o\s+(de\s+)?entrega/, /data\s+prevista/, /prev\.?\s+entrega/], getter: (row) => formatDate(row.previsaoEntregaDate) || row.previsaoEntrega || '' },
+    { key: 'agenda', label: 'Data da agenda', patterns: [/agenda|agendamento|data\s+agenda/], getter: (row) => formatDate(row.agendaDate) || row.agenda || '' },
+    { key: 'status', label: 'Status de entrega', patterns: [/status\s+(de\s+)?entrega/, /status\s+operacional/, /situa[cç][aã]o/, /\bstatus\b/], getter: (row) => row.statusBucket || row.status || '' },
+    { key: 'ontime', label: 'ONTIME', patterns: [/ontime|on\s*time|prazo|sla/], getter: (row) => row.ontimeStatus === true ? 'No prazo' : row.ontimeStatus === false ? 'Fora do prazo' : 'Sem ONTIME' },
+    { key: 'cliente', label: 'Cliente', patterns: [/cliente|destinatario|destinat[aá]rio/], getter: (row) => row.cliente || '' },
+    { key: 'cidade', label: 'Cidade', patterns: [/cidade|municipio|munic[ií]pio/], getter: (row) => row.cidade || '' },
+    { key: 'uf', label: 'UF', patterns: [/\buf\b|estado|destino/], getter: (row) => row.uf || '' },
+    { key: 'data-nf', label: 'Data NF', patterns: [/data\s+(da\s+)?nf|data\s+(da\s+)?nota|emiss[aã]o/], getter: (row) => formatDate(row.emissaoDate) || row.emissao || getRawField(row, ['Data NF']) || '' },
+    { key: 'saida', label: 'Data saída real', patterns: [/saida|sa[ií]da|expedi[cç][aã]o/], getter: (row) => formatDate(row.saidaDate) || row.saida || '' },
+    { key: 'chegada', label: 'Chegada no cliente', patterns: [/chegada|entrega\s+realizada|data\s+da\s+entrega/], getter: (row) => formatDate(row.chegadaClienteDate) || row.chegadaCliente || getRawField(row, ['Data daEntrega', 'Data da Entrega']) || '' },
+    { key: 'transportador', label: 'Transportador', patterns: [/transportador|transportadora|transp/], getter: (row) => normalizeTransporterLabel(row.transportadora) || '' },
+    { key: 'veiculo', label: 'Tipo de veículo', patterns: [/tipo\s+de\s+veiculo|tipo\s+de\s+veículo|veiculo|veículo|truck|carreta|bitrem/], getter: (row) => normalizeVehicleTypeForProfile(row.tpVeiculo) || row.tpVeiculo || '' },
+    { key: 'tipo-carga', label: 'Tipo de carga', patterns: [/tipo\s+de\s+carga|tp\s+carga/], getter: (row) => normalizeCargoTypeForProfile(row.tpCarga) || row.tpCarga || '' },
+    { key: 'ocorrencia', label: 'Ocorrência', patterns: [/ocorr[eê]ncia|ocorrencia|problema|avaria/], getter: (row) => row.hasOccurrence ? occurrenceTypeLabel(row) : 'Não' },
+    { key: 'descricao-ocorrencia', label: 'Descrição da ocorrência', patterns: [/descri[cç][aã]o\s+da\s+ocorr[eê]ncia|descricao\s+da\s+ocorrencia|motivo\s+ocorr/], getter: (row) => row.occurrenceDescription || row.occurrenceText || '' },
+    { key: 'setor', label: 'Setor responsável', patterns: [/setor|respons[aá]vel|responsavel/], getter: (row) => row.setor || '' },
+    { key: 'devolucao', label: 'Devolução', patterns: [/devolu[cç][aã]o|devolucao|retorno|reversa/], getter: (row) => row.hasReturn ? 'Sim' : 'Não' },
+    { key: 'tipo-devolucao', label: 'Tipo de devolução', patterns: [/tipo\s+de\s+devolu[cç][aã]o|tipo\s+de\s+devolucao/], getter: (row) => row.returnType || '' },
+    { key: 'motivo-devolucao', label: 'Motivo de devolução', patterns: [/motivo\s+de\s+devolu[cç][aã]o|motivo\s+de\s+devolucao|motivo\s+dev/], getter: (row) => row.returnReason || '' },
+    { key: 'observacao', label: 'Observação', patterns: [/observa[cç][aã]o|observacao|obs\b|coment[aá]rio/], getter: (row) => row.observacao || getRawField(row, ['OBSERVAÇÃO 1', 'Observação', 'OBS']) || '' }
+  ];
+}
+function parseAiRequestedColumns(question) {
+  const q = normalizeText(question);
+  const defs = aiReportColumnDefinitions();
+  const columns = defs.filter((def) => def.patterns.some((pattern) => pattern.test(q)));
+  const unique = [];
+  columns.forEach((column) => { if (!unique.some((item) => item.key === column.key)) unique.push(column); });
+  return unique;
+}
+function filterRowsForAiReport(question) {
+  const q = normalizeText(question);
+  let rows = /(base\s+completa|todos\s+os\s+registros|todas\s+as\s+unidades|filial\s+e\s+matriz|matriz\s+e\s+filial)/.test(q) ? STATE.records.slice() : STATE.filtered.slice();
+  if (/\bmatriz\b|matriz\s+sp/.test(q) && !/filial\s+e\s+matriz|matriz\s+e\s+filial|todas\s+as\s+unidades/.test(q)) rows = rows.filter((row) => row.source === 'Matriz SP');
+  if (/\bfilial\b|filial\s+ba/.test(q) && !/filial\s+e\s+matriz|matriz\s+e\s+filial|todas\s+as\s+unidades/.test(q)) rows = rows.filter((row) => row.source === 'Filial BA');
+  if (/(atras|fora\s+do\s+prazo|vencid)/.test(q)) rows = rows.filter((row) => row.delayed || row.ontimeStatus === false);
+  if (/\bno\s+prazo\b|dentro\s+do\s+prazo/.test(q) && !/fora\s+do\s+prazo/.test(q)) rows = rows.filter((row) => row.ontimeStatus === true);
+  if (/ocorr[eê]ncia|ocorrencia|problema|avaria/.test(q)) rows = rows.filter((row) => row.hasOccurrence);
+  if (/devolu[cç][aã]o|devolucao|retorno|reversa/.test(q)) rows = rows.filter((row) => row.hasReturn);
+  if (/em\s+tr[aâ]nsito|em\s+transito/.test(q)) rows = rows.filter((row) => row.transit);
+  if (/finalizad|entregue|entregas\s+realizadas/.test(q)) rows = rows.filter((row) => row.delivered || row.waitingUnload);
+  if (/aguardando\s+descarga|descarga\s+no\s+cliente/.test(q)) rows = rows.filter((row) => row.waitingUnload);
+  if (/agenda|agendamento|pr[oó]xim|proxim|d\+2|hoje|amanh[aã]/.test(q)) {
+    const today = new Date();
+    if (/hoje/.test(q) && !/d\+2|pr[oó]xim|proxim|amanh/.test(q)) rows = rows.filter((row) => isSameDay(row.agendaDate || row.previsaoEntregaDate, today));
+    else rows = rows.filter((row) => isBetweenDays(row.agendaDate || row.previsaoEntregaDate, today, addDays(today, 2)));
+  }
+  return rows;
+}
+function buildAiRequestedReportRows(rows, columns) {
+  return [columns.map((column) => column.label), ...rows.map((row) => columns.map((column) => column.getter(row)))];
+}
+function buildAiReportSummaryRows(question, rows, columns) {
+  const m = computeMetrics(rows);
+  return [
+    ['Relatório Monitor IA'],
+    ['Solicitação', question],
+    ['Gerado em', formatDateTime(new Date())],
+    ['Escopo', aiReportScopeText(question)],
+    ['Registros', rows.length],
+    ['Notas', m.totalNotes],
+    ['Cargas únicas', m.totalLoads],
+    ['Fora do prazo', m.delayed],
+    ['Performance ONTIME', `${m.ontimeRate}%`],
+    ['Colunas', columns.map((column) => column.label).join(', ')]
+  ];
+}
+function aiReportScopeText(question) {
+  return /(base\s+completa|todos\s+os\s+registros|todas\s+as\s+unidades|filial\s+e\s+matriz|matriz\s+e\s+filial)/.test(normalizeText(question)) ? 'base completa solicitada' : 'com os filtros atuais do painel';
+}
+function buildPanelUsageGuide() {
+  return 'Guia rápido do painel:\n• Use as abas laterais para navegar por Acompanhamento Geral, Performance, Ocorrências, Devoluções, Mapa, Informações Extras e Montar Relatório.\n• No topo, selecione Filial BA ou Matriz SP e refine por data, mês, UF, status ou busca rápida.\n• Clique em cards, barras, pizzas e linhas da tabela para filtrar, abrir detalhes, imprimir ou exportar XLSX. Clicar novamente no mesmo filtro desfaz a seleção.\n• Em Montar Relatório, marque os blocos desejados, escolha duas informações no gráfico cruzado e alterne entre Barras, Matriz e Ranking.\n• Para exportar pelo Monitor IA, peça em linguagem natural: “gerar XLSX com OF, Nota Fiscal, Motorista, previsão de entrega e status”. Eu busco a base filtrada e baixo a planilha.\nSe a dúvida for operacional, diga o problema, por exemplo: “como resolver atrasos por UF?” ou “o que fazer com devoluções por motivo?”.';
+}
+function buildSolutionAdvice(question, metrics, delayed, occurrences, returns) {
+  const q = normalizeText(question);
+  if (/(devolu[cç][aã]o|devolucao|retorno|reversa)/.test(q)) {
+    const byReason = countBy(returns, (row) => cleanLabel(row.returnReason) || 'Sem motivo informado');
+    const byDriver = countBy(returns, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa');
+    return `Plano de ação para devoluções: motivo principal ${topLabel(byReason) || '-'}; motorista/placa mais recorrente ${topLabel(byDriver) || '-'}. Ações sugeridas: validar motivo na planilha, separar notas reincidentes, acionar atendimento/expedição antes da próxima agenda e exportar XLSX da aba Devoluções para tratativa.`;
+  }
+  if (/(ocorr[eê]ncia|ocorrencia|problema|avaria)/.test(q)) {
+    const bySector = countBy(occurrences, (row) => cleanLabel(row.setor) || 'Sem setor');
+    const byUf = countBy(occurrences, (row) => row.uf || 'Sem UF');
+    return `Plano de ação para ocorrências: setor mais acionado ${topLabel(bySector) || '-'}; UF com maior volume ${topLabel(byUf) || '-'}. Ações sugeridas: abrir a aba Ocorrências, clicar na descrição frequente para ver a base, exportar XLSX, priorizar registros também fora do prazo e registrar tratativa por setor responsável.`;
+  }
+  const byUfLate = countBy(delayed, (row) => row.uf || 'Sem UF');
+  const byCarrierLate = countBy(delayed, (row) => normalizeTransporterLabel(row.transportadora) || 'Sem transportador');
+  return `Plano de ação para atrasos/performance: há ${formatInteger(metrics.delayed)} carga(s) fora do prazo; UF crítica ${topLabel(byUfLate) || '-'}; transportador crítico ${topLabel(byCarrierLate) || '-'}. Ações sugeridas: filtrar “Atrasadas / fora do prazo”, abrir a prévia do gráfico por UF/status, exportar XLSX com OF/NF/motorista/previsão/status e acionar o transportador ou motorista antes da próxima agenda.`;
 }
 function answerQuestion(question) {
   const q = normalizeText(question), rows = STATE.filtered, metrics = computeMetrics(rows), delayed = rows.filter((row) => row.delayed), occurrences = rows.filter((row) => row.hasOccurrence), returns = rows.filter((row) => row.hasReturn);
+  if (/(como\s+(usar|utilizar|funciona|navegar|exportar|gerar)|onde|localiz|achar|encontr|guia|manual|ajuda|duvida|dúvida|aba)/.test(q)) return buildPanelUsageGuide();
+  if (/(solucao|solução|resolver|acao|ação|acoes|ações|o que fazer|recomend)/.test(q)) return buildSolutionAdvice(question, metrics, delayed, occurrences, returns);
   if (/(relatorio|relatório|resumo|consolid)/.test(q)) return buildQuickReport();
-  if (/(onde|localiz|achar|encontr|guia|aba)/.test(q)) return 'Guia rápido:\n• Acompanhamento Geral: totais, status, UFs, filiais e tabela completa de viagens/cargas/NFs.\n• Performance de Entregas: % ONTIME, dentro/fora do prazo e cargas atrasadas.\n• Ocorrências: descrições, setor responsável, UFs e motoristas recorrentes.\n• Devoluções: tipo, motivo, região, motorista e observações.\n• Mapa: resumo por região com alertas e filtros superiores.\nDica: clique em qualquer linha de tabela para abrir todos os campos da planilha.';
   if (/(atras|fora do prazo|prazo venc)/.test(q)) { const byUf = countBy(delayed, (row) => row.uf || 'Sem UF'); const sample = delayed.slice(0, 5).map((row) => `• ${row.of || row.notaFiscal || 'Carga'} - ${row.cliente || 'cliente não informado'} (${row.uf || '-'})`).join('\n'); return `${formatInteger(delayed.length)} carga(s) estão em atraso nos filtros atuais (${percent(delayed.length, rows.length)} do total). UF mais crítica: ${topLabel(byUf) || 'sem UF'}.\n${sample || 'Não há cargas atrasadas para listar.'}`; }
   if (/(ontime|on time|performance|dentro do prazo|sla)/.test(q)) { const eligible = rows.filter((row) => row.performanceEligible), ontime = eligible.filter((row) => row.ontimeStatus === true).length, late = eligible.filter((row) => row.ontimeStatus === false || row.delayed).length; return `Performance ONTIME da seleção: ${metrics.ontimeRate}%. Base contabilizada: ${formatInteger(eligible.length)} nota(s). Dentro do prazo: ${formatInteger(ontime)}. Fora do prazo: ${formatInteger(late)}. Em trânsito dentro do prazo ou sem fechamento não entra no denominador.`; }
   if (/(ocorr|problema|sinistro|avaria)/.test(q)) { const byUf = countBy(occurrences, (row) => row.uf || 'Sem UF'), bySector = countBy(occurrences, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(occurrences, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'); return `Há ${formatInteger(occurrences.length)} ocorrência(s). UF com maior volume: ${topLabel(byUf) || '-'}. Setor mais acionado: ${topLabel(bySector) || '-'}. Motorista/placa com mais registros: ${topLabel(byDriver) || '-'}. Consulte a aba Ocorrências para descrições e linhas detalhadas.`; }
