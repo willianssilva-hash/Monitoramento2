@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import csv
 import html
-import io
 import json
 import re
 import sys
@@ -18,9 +17,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-import zipfile
-import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
@@ -77,15 +74,7 @@ def header_score(row: Iterable[str]) -> int:
     return sum(1 for cell in row if is_known_header(cell))
 
 
-def fetch_text(url: str, attempts: int = 3, timeout: int = 60) -> str:
-    raw, charset = fetch_bytes(url, attempts=attempts, timeout=timeout, accept="text/html,text/csv,text/plain,*/*")
-    text = raw.decode(charset or "utf-8", errors="replace")
-    if "Sorry, the file you have requested does not exist" in text:
-        raise RuntimeError("arquivo não encontrado pelo Google")
-    return text
-
-
-def fetch_bytes(url: str, attempts: int = 3, timeout: int = 60, accept: str = "*/*") -> tuple[bytes, str | None]:
+def fetch_text(url: str, attempts: int = 3) -> str:
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
@@ -93,48 +82,17 @@ def fetch_bytes(url: str, attempts: int = 3, timeout: int = 60, accept: str = "*
                 url,
                 headers={
                     "User-Agent": "Mozilla/5.0 (compatible; TorreControle/1.0)",
-                    "Accept": accept,
+                    "Accept": "text/html,text/csv,text/plain,*/*",
                 },
             )
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+            with urllib.request.urlopen(req, timeout=45) as response:
                 raw = response.read()
-                if not raw:
-                    raise RuntimeError("resposta vazia")
-                return raw, response.headers.get_content_charset()
-        except Exception as exc:  # noqa: BLE001 - log detalhado no resultado JSON
-            last_error = exc
-            time.sleep(attempt * 1.5)
-    raise RuntimeError(str(last_error) if last_error else "falha desconhecida")
-
-
-def fetch_text_limited(url: str, limit: int = 900_000, attempts: int = 3, timeout: int = 45) -> str:
-    """Lê só o início do pubhtml para descobrir gids sem baixar a tabela inteira."""
-    last_error: Exception | None = None
-    for attempt in range(1, attempts + 1):
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; TorreControle/1.0)",
-                    "Accept": "text/html,*/*",
-                },
-            )
-            chunks: list[bytes] = []
-            remaining = limit
-            charset = "utf-8"
-            with urllib.request.urlopen(req, timeout=timeout) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
-                while remaining > 0:
-                    chunk = response.read(min(65536, remaining))
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                    remaining -= len(chunk)
-            raw = b"".join(chunks)
-            if not raw:
-                raise RuntimeError("resposta vazia")
-            return raw.decode(charset, errors="replace")
-        except Exception as exc:  # noqa: BLE001
+                text = raw.decode(charset, errors="replace")
+                if "Sorry, the file you have requested does not exist" in text:
+                    raise RuntimeError("arquivo não encontrado pelo Google")
+                return text
+        except Exception as exc:  # noqa: BLE001 - log detalhado no resultado JSON
             last_error = exc
             time.sleep(attempt * 1.5)
     raise RuntimeError(str(last_error) if last_error else "falha desconhecida")
@@ -253,178 +211,12 @@ def rows_to_records(rows: list[list[str]], source: dict) -> list[dict]:
     return records
 
 
-def col_ref_to_index(ref: str) -> int:
-    letters = re.sub(r"[^A-Z]", "", ref.upper())
-    index = 0
-    for char in letters:
-        index = index * 26 + (ord(char) - ord("A") + 1)
-    return max(0, index - 1)
-
-
-def xml_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
-
-
-def relationship_map(zf: zipfile.ZipFile) -> dict[str, str]:
-    try:
-        root = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
-    except KeyError:
-        return {}
-    output: dict[str, str] = {}
-    for rel in root:
-        if xml_name(rel.tag) != "Relationship":
-            continue
-        rel_id = rel.attrib.get("Id", "")
-        target = rel.attrib.get("Target", "")
-        if rel_id and target:
-            if target.startswith("/"):
-                output[rel_id] = target.lstrip("/")
-            else:
-                output[rel_id] = "xl/" + target.lstrip("/")
-    return output
-
-
-def shared_strings(zf: zipfile.ZipFile) -> list[str]:
-    try:
-        root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
-    except KeyError:
-        return []
-    values: list[str] = []
-    for si in root:
-        if xml_name(si.tag) != "si":
-            continue
-        parts: list[str] = []
-        for node in si.iter():
-            if xml_name(node.tag) == "t" and node.text:
-                parts.append(node.text)
-        values.append("".join(parts))
-    return values
-
-
-def date_style_indexes(zf: zipfile.ZipFile) -> set[int]:
-    builtin_date_ids = set(range(14, 23)) | {27, 30, 36, 45, 46, 47, 50, 57}
-    try:
-        root = ET.fromstring(zf.read("xl/styles.xml"))
-    except KeyError:
-        return set()
-    custom_date_formats: set[int] = set()
-    for node in root.iter():
-        if xml_name(node.tag) != "numFmt":
-            continue
-        fmt_id = node.attrib.get("numFmtId")
-        code = norm(node.attrib.get("formatCode", ""))
-        if not fmt_id:
-            continue
-        if any(token in code for token in ("d", "dd", "dia", "yy", "yyyy", "h mm", "m yy")) and not any(token in code for token in ("red", "green", "blue", "r ")):
-            try:
-                custom_date_formats.add(int(fmt_id))
-            except ValueError:
-                pass
-    date_styles: set[int] = set()
-    cell_xfs = next((node for node in root.iter() if xml_name(node.tag) == "cellXfs"), None)
-    if cell_xfs is None:
-        return date_styles
-    for index, xf in enumerate([child for child in cell_xfs if xml_name(child.tag) == "xf"]):
-        try:
-            num_fmt_id = int(xf.attrib.get("numFmtId", "0"))
-        except ValueError:
-            num_fmt_id = 0
-        if num_fmt_id in builtin_date_ids or num_fmt_id in custom_date_formats:
-            date_styles.add(index)
-    return date_styles
-
-
-def excel_serial_to_date_text(value: float) -> str:
-    # Excel/Sheets usa 1899-12-30 como base prática para serials de data.
-    dt = datetime(1899, 12, 30) + timedelta(days=value)
-    return dt.strftime("%d/%m/%Y")
-
-
-def format_xlsx_number(value: str, as_date: bool) -> str:
-    raw = str(value or "").strip()
-    if raw == "":
-        return ""
-    try:
-        number = float(raw)
-    except ValueError:
-        return raw
-    if as_date:
-        return excel_serial_to_date_text(number)
-    if number.is_integer():
-        return str(int(number))
-    return ("%f" % number).rstrip("0").rstrip(".")
-
-
-def parse_xlsx_cell(cell: ET.Element, strings: list[str], date_styles: set[int]) -> str:
-    cell_type = cell.attrib.get("t", "")
-    try:
-        style_index = int(cell.attrib.get("s", "-1"))
-    except ValueError:
-        style_index = -1
-    value_node = next((child for child in cell if xml_name(child.tag) == "v"), None)
-    if cell_type == "inlineStr":
-        parts = [node.text or "" for node in cell.iter() if xml_name(node.tag) == "t"]
-        return "".join(parts).strip()
-    if value_node is None or value_node.text is None:
-        return ""
-    value = value_node.text.strip()
-    if cell_type == "s":
-        try:
-            return strings[int(value)].strip()
-        except (ValueError, IndexError):
-            return value
-    if cell_type == "b":
-        return "VERDADEIRO" if value == "1" else "FALSO"
-    return format_xlsx_number(value, style_index in date_styles)
-
-
-def parse_xlsx_sheet_rows(zf: zipfile.ZipFile, sheet_path: str, strings: list[str], date_styles: set[int]) -> list[list[str]]:
-    root = ET.fromstring(zf.read(sheet_path))
-    sheet_data = next((node for node in root.iter() if xml_name(node.tag) == "sheetData"), None)
-    if sheet_data is None:
-        return []
-    rows: list[list[str]] = []
-    for row_node in [node for node in sheet_data if xml_name(node.tag) == "row"]:
-        values: list[str] = []
-        for cell in [node for node in row_node if xml_name(node.tag) == "c"]:
-            ref = cell.attrib.get("r", "")
-            col_index = col_ref_to_index(ref) if ref else len(values)
-            while len(values) < col_index:
-                values.append("")
-            values.append(parse_xlsx_cell(cell, strings, date_styles))
-        rows.append(values)
-    return rows
-
-
-def parse_xlsx_workbook(blob: bytes, source: dict) -> list[tuple[str, list[dict], list[str]]]:
-    output: list[tuple[str, list[dict], list[str]]] = []
-    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
-        workbook = ET.fromstring(zf.read("xl/workbook.xml"))
-        rels = relationship_map(zf)
-        strings = shared_strings(zf)
-        date_styles = date_style_indexes(zf)
-        for sheet in workbook.iter():
-            if xml_name(sheet.tag) != "sheet":
-                continue
-            name = sheet.attrib.get("name", "Planilha")
-            rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id") or sheet.attrib.get("r:id", "")
-            path = rels.get(rel_id, "")
-            if not path or path not in zf.namelist():
-                continue
-            rows = parse_xlsx_sheet_rows(zf, path, strings, date_styles)
-            records = rows_to_records(rows, source)
-            if records:
-                output.append((name, records, list(records[0].keys())))
-    return output
-
-
 def discover_gids(pubhtml: str, base_pub: str) -> tuple[list[str], set[str]]:
-    decoded = urllib.parse.unquote(pubhtml or '').replace('\\x3d', '=').replace('\\u003d', '=')
     gids: list[str] = []
     target_gids: set[str] = set()
-    for match in re.finditer(r"gid\s*=\s*(\d+)", decoded):
+    for match in re.finditer(r"gid=(\d+)", pubhtml):
         gid = match.group(1)
-        window = decoded[max(0, match.start() - 1200) : match.end() + 1200]
+        window = pubhtml[max(0, match.start() - 700) : match.end() + 700]
         is_target = "acompanh" in norm(window)
         if is_target:
             target_gids.add(gid)
@@ -445,123 +237,63 @@ def candidate_score(records: list[dict], fields: list[str]) -> tuple[int, int, i
     return (len(visible_fields), known, min(len(records), 20000), len(records))
 
 
-def has_rich_candidate(candidates: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]]) -> bool:
-    return any(len([field for field in fields if not str(field).startswith("__")]) >= 20 for _, _, _, fields in candidates)
-
-
-def add_candidate(
-    candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]],
-    errors: list[str],
-    target_priority: int,
-    origin: str,
-    records: list[dict],
-    fields: list[str],
-) -> None:
-    if not records:
-        return
-    base_score = candidate_score(records, fields)
-    score = (target_priority, *base_score)
-    candidates_found.append((score, origin, records, fields))
-    errors.append(f"candidato {origin}: {len(records)} linhas / {len(fields)} campos / score {score}")
-
-
 def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     errors: list[str] = []
     candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]] = []
     base = f"https://docs.google.com/spreadsheets/d/e/{source['pubId']}"
     pubhtml_text = ""
-    seen_urls: set[str] = set()
 
-    def collect_csv_candidate(url: str, target_priority: int, origin_label: str, attempts: int = 3, timeout: int = 60) -> None:
+    try:
+        pubhtml_text = fetch_text(source["url"])
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"pubhtml: {exc}")
+
+    gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
+    if target_gids:
+        # Para desempenho, quando a publicação informa a aba acompanhamento,
+        # tentamos somente seus gids e o CSV padrão. Isso evita varrer abas de
+        # apoio enormes e mantém o deploy dentro de poucos minutos.
+        gids_to_try = [gid for gid in gids if gid in target_gids]
+        errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
+    else:
+        gids_to_try = gids[:4]
+    if "0" not in gids_to_try:
+        gids_to_try.append("0")
+    csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids_to_try]
+    csv_candidates.append((f"{base}/pub?output=csv", ""))
+
+    seen_urls: set[str] = set()
+    for url, gid in csv_candidates:
         if url in seen_urls:
-            return
+            continue
         seen_urls.add(url)
         try:
-            rows = parse_csv_rows(fetch_text(url, attempts=attempts, timeout=timeout))
+            rows = parse_csv_rows(fetch_text(url))
             records = rows_to_records(rows, source)
             if records:
                 fields = list(records[0].keys())
-                add_candidate(candidates_found, errors, target_priority, origin_label, records, fields)
+                base_score = candidate_score(records, fields)
+                target_priority = 1 if gid in target_gids else 0
+                score = (target_priority, *base_score)
+                candidates_found.append((score, f"csv:{url}", records, fields))
+                errors.append(f"candidato {url}: {len(records)} linhas / {len(fields)} campos / score {score}")
             else:
-                errors.append(f"csv sem dados: {origin_label}")
+                errors.append(f"csv sem dados: {url}")
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"csv {origin_label}: {exc}")
+            errors.append(f"csv {url}: {exc}")
 
-    # Primeira tentativa: endpoint gviz por nome da aba. Isso evita depender do
-    # gid e costuma retornar exatamente a aba acompanhamento como CSV.
-    for sheet_name in ("acompanhamento", "Acompanhamento", "ACOMPANHAMENTO"):
-        params = urllib.parse.urlencode({"tqx": "out:csv", "sheet": sheet_name})
-        collect_csv_candidate(f"{base}/gviz/tq?{params}", 2, f"gviz:{sheet_name}", attempts=1, timeout=45)
-        if has_rich_candidate(candidates_found):
-            break
-
-    if not has_rich_candidate(candidates_found):
-        try:
-            # O pubhtml completo pode ser grande e travar; o cabeçalho já contém os
-            # links/gids das abas publicadas. Ler apenas o início evita cair no CSV
-            # padrão da primeira aba e permite buscar a aba acompanhamento correta.
-            pubhtml_text = fetch_text_limited(source["url"])
-            errors.append(f"pubhtml parcial: {len(pubhtml_text)} caracteres lidos para descoberta de gids")
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"pubhtml parcial: {exc}")
-
-        gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
-        if target_gids:
-            gids_to_try = [gid for gid in gids if gid in target_gids]
-            errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
-        else:
-            gids_to_try = gids[:2]
-            errors.append("pubhtml parcial não informou gid da aba acompanhamento; tentando primeiros gids e CSV padrão")
-        if "0" not in gids_to_try:
-            gids_to_try.append("0")
-        csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids_to_try]
-        csv_candidates.append((f"{base}/pub?output=csv", ""))
-
-        for url, gid in csv_candidates:
-            target_priority = 1 if gid in target_gids else 0
-            long_target = gid == '0' or target_priority > 0
-            collect_csv_candidate(url, target_priority, f"csv:{url}", attempts=1 if long_target else 2, timeout=180 if long_target else 60)
-    else:
-        errors.append("pubhtml/gid ignorado: gviz da aba acompanhamento já trouxe base rica")
-
-    # Só tenta XLSX quando os CSVs não trouxeram uma base rica. O XLSX completo é
-    # mais pesado, mas serve como salvaguarda quando o Google não expõe os gids.
-    if not has_rich_candidate(candidates_found):
-        try:
-            blob, _ = fetch_bytes(
-                f"{base}/pub?output=xlsx",
-                attempts=1,
-                timeout=90,
-                accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*",
-            )
-            workbook_candidates = parse_xlsx_workbook(blob, source)
-            if workbook_candidates:
-                sheet_names = ", ".join(name for name, _, _ in workbook_candidates[:12])
-                errors.append(f"xlsx abas úteis: {sheet_names}")
-            for sheet_name, records, fields in workbook_candidates:
-                sheet_norm = norm(sheet_name)
-                target_priority = 2 if sheet_norm == "acompanhamento" else 1 if "acompanh" in sheet_norm else 0
-                if target_priority <= 0:
-                    continue
-                add_candidate(candidates_found, errors, target_priority, f"xlsx:{sheet_name}", records, fields)
-            if not any(origin.startswith("xlsx:") for _, origin, _, _ in candidates_found):
-                errors.append("xlsx sem aba acompanhamento útil")
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"xlsx: {exc}")
-    else:
-        errors.append("xlsx ignorado: CSV/gviz da aba acompanhamento já trouxe base rica")
-
-    # Como último fallback, se o pubhtml parcial veio completo o suficiente para
-    # conter tabelas úteis, também avaliamos seus dados renderizados.
-    if pubhtml_text and not has_rich_candidate(candidates_found):
+    if pubhtml_text:
         try:
             for index, table in enumerate(parse_html_tables(pubhtml_text), start=1):
                 records = rows_to_records(table, source)
                 if records:
                     fields = list(records[0].keys())
-                    add_candidate(candidates_found, errors, 0, f"html:table-{index}", records, fields)
+                    base_score = candidate_score(records, fields)
+                    score = (0, *base_score)
+                    candidates_found.append((score, f"html:table-{index}", records, fields))
+                    errors.append(f"candidato html table-{index}: {len(records)} linhas / {len(fields)} campos / score {score}")
             if not any(origin.startswith("html:") for _, origin, _, _ in candidates_found):
-                errors.append("html parcial sem tabela útil")
+                errors.append("html sem tabela útil")
         except Exception as exc:  # noqa: BLE001
             errors.append(f"html parse: {exc}")
 

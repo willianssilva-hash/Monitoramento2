@@ -9,7 +9,7 @@ const CONFIG = {
   ],
   aliases: {
     mes: ['Mês', 'Mes', 'Mês Referência', 'Mes Referencia'],
-    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Prog De Embarque', 'Data Prog de Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação', 'Data de carregamento', 'Data Carregamento', 'Dt Carregamento', 'Data Carga'],
+    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Prog De Embarque', 'Data Prog de Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
     of: ['OF', 'Ordem de Frete', 'Ordem Frete', 'Carga', 'Nº Carga', 'N Carga', 'Numero Carga', 'Número Carga', 'Remessa'],
     agenda: ['Agenda', 'Data Agenda', 'Agendamento', 'Data Agendamento', 'Agenda Cliente'],
     cliente: ['Cliente', 'Destinatário', 'Destinatario', 'Razão Social', 'Razao Social'],
@@ -55,11 +55,11 @@ const CONFIG = {
 
 const STATE = {
   rawRecords: [], records: [], filtered: [], errors: [], isDemo: false, isLoading: false,
-  lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', selectedMapUf: '', selectedMapCity: '', selectedMapCityUf: '', mapStatus: 'all', weather: {},
-  brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '', mapZoom: 1, mapPanX: 0, mapPanY: 0, mapDragging: false, mapDragStart: null, mapTransitionTimer: null, mapClickTimer: null, tableSorts: {},
+  lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', mapStatus: 'all', weather: {},
+  brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '', mapZoom: 1, mapPanX: 0, mapPanY: 0, mapDragging: false, mapDragStart: null, tableSorts: {},
   monitorMemory: { totalRequests: 0, topics: {}, lastQuestions: [], insights: [] }, monitorLastSignature: '', occurrenceDetailRows: [], occurrenceDetailLabel: '',
   chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicChartType: 'bars', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
-  filters: { from: '', to: '', month: 'all', source: 'all', uf: 'all', status: 'all', search: '' }
+  filters: { from: '', to: '', month: 'all', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
 const pendingGviz = new Map();
@@ -118,7 +118,7 @@ function bindEvents() {
   if (DOM.brazilMap) bindMapZoomEvents();
   if (DOM.mapZoomIn) DOM.mapZoomIn.addEventListener('click', () => adjustMapZoom(0.2));
   if (DOM.mapZoomOut) DOM.mapZoomOut.addEventListener('click', () => adjustMapZoom(-0.2));
-  if (DOM.mapZoomReset) DOM.mapZoomReset.addEventListener('click', resetMapView);
+  if (DOM.mapZoomReset) DOM.mapZoomReset.addEventListener('click', resetMapZoom);
   DOM.monitorForm.addEventListener('submit', (event) => { event.preventDefault(); const q = DOM.monitorInput.value.trim(); if (q) { DOM.monitorInput.value = ''; askMonitor(q); } });
   document.querySelectorAll('.monitor-chips button').forEach((button) => button.addEventListener('click', () => askMonitor(button.dataset.question || button.textContent)));
   if (DOM.aiFab) DOM.aiFab.addEventListener('click', () => document.body.classList.toggle('ai-floating-open'));
@@ -129,22 +129,19 @@ function bindEvents() {
     const row = event.target.closest('[data-open-record]'); if (row) return openRecordDetail(row.dataset.openRecord);
     const action = event.target.closest('[data-action]'); if (action) handleAction(action.dataset.action, action.dataset.value, action);
   });
-  document.body.addEventListener('dblclick', (event) => {
-    const detail = event.target.closest('[data-map-detail]');
-    if (!detail) return;
-    event.preventDefault();
-    cancelMapSingleClick();
-    const [type = '', value = '', uf = ''] = String(detail.dataset.mapDetail || '').split('|||');
-    openMapGroupDetail(type, value, uf);
-  });
   DOM.modalClose.addEventListener('click', () => DOM.detailModal.close());
   DOM.detailModal.addEventListener('click', (event) => {
     const rect = DOM.detailModal.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) DOM.detailModal.close();
   });
-  DOM.mapRegionFilter.addEventListener('change', () => { STATE.selectedRegion = DOM.mapRegionFilter.value; STATE.selectedMapUf = ''; STATE.selectedMapCity = ''; STATE.selectedMapCityUf = ''; resetMapZoom(); renderMap(); });
+  DOM.mapRegionFilter.addEventListener('change', () => { STATE.selectedRegion = DOM.mapRegionFilter.value; resetMapZoom(); renderMap(); });
   DOM.mapStatusFilter.addEventListener('change', () => { STATE.mapStatus = DOM.mapStatusFilter.value; renderMap(); });
-  DOM.applyMapRegionGlobal.addEventListener('click', resetMapView);
+  DOM.applyMapRegionGlobal.addEventListener('click', () => {
+    STATE.selectedRegion = 'all';
+    DOM.mapRegionFilter.value = 'all';
+    resetMapZoom();
+    renderMap();
+  });
 }
 
 function activateTab(tab) {
@@ -155,7 +152,7 @@ function activateTab(tab) {
 }
 
 function selectSourceTab(source) {
-  const selected = source || 'all';
+  const selected = source || CONFIG.sources[0].short;
   DOM.filterSource.value = selected;
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === selected));
   onFilterChange();
@@ -495,9 +492,9 @@ function getAliasedValue(record, aliases) {
   const keys = Object.keys(record).filter((key) => !key.startsWith('__'));
   const normalizedKeys = keys.map((key) => ({ key, norm: normalizeText(key) }));
   const normalizedAliases = aliases.map((alias) => normalizeText(alias)).filter(Boolean);
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
   return '';
 }
 
@@ -590,14 +587,7 @@ function isRetiraContract(row) { return /\bretira\b/.test(normalizeText(row && r
 function hasDocumentNumber(row) {
   const of = cleanLabel(row && row.of);
   const nf = cleanLabel(row && row.notaFiscal);
-  const valid = (value) => {
-    const text = cleanLabel(value);
-    if (!text) return false;
-    const n = normalizeText(text);
-    if (/^(0+|0+ 0+|nao|não|sem|sem documento|sem nf|sem of|n a|na|nd|n d|null|nulo|undefined|indefinido)$/.test(n)) return false;
-    if (/^-?0+(?:[.,]0+)?$/.test(text.trim())) return false;
-    return /[a-z0-9]/i.test(n);
-  };
+  const valid = (value) => Boolean(value && !/^(0+|nao|não|sem|n\/a|-+)$/i.test(normalizeText(value)));
   return valid(of) || valid(nf);
 }
 function normalizeReturnType(row) {
@@ -611,17 +601,17 @@ function isMeaningfulReturn(value) { const n = normalizeText(value); return Bool
 function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceType,row.occurrenceDescription,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
 
 function populateSourceFilter() {
-  DOM.filterSource.innerHTML = '<option value="all">Todas as unidades</option>' + CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join('');
-  DOM.filterSource.value = STATE.filters.source || 'all';
+  DOM.filterSource.innerHTML = CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join('');
+  DOM.filterSource.value = STATE.filters.source || CONFIG.sources[0].short;
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value));
 }
 function populateDynamicFilters() { const currentUf = DOM.filterUf.value || 'all'; const ufs = [...new Set(STATE.records.map((row) => row.uf).filter(Boolean))].sort(); DOM.filterUf.innerHTML = '<option value="all">Todas</option>' + ufs.map((uf) => `<option value="${escapeHtml(uf)}">${escapeHtml(uf)}</option>`).join(''); DOM.filterUf.value = ufs.includes(currentUf) ? currentUf : 'all'; STATE.filters.uf = DOM.filterUf.value; }
 function onFilterChange() {
-  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, month: DOM.filterMonth.value || 'all', source: DOM.filterSource.value || 'all', uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
+  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, month: DOM.filterMonth.value || 'all', source: DOM.filterSource.value || CONFIG.sources[0].short, uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === STATE.filters.source));
   applyFiltersAndRender();
 }
-function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = 'all'; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
+function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
 function applyFiltersAndRender() { STATE.filtered = STATE.records.filter((row) => matchesFilters(row, STATE.filters)); renderAll(); }
 function matchesFilters(row, filters) {
   if (filters.source !== 'all' && row.source !== filters.source) return false; if (filters.uf !== 'all' && row.uf !== filters.uf) return false;
@@ -872,25 +862,12 @@ function kpiCard(title, value, subtitle, icon, variant = '', filterStatus = null
   const summary = `<strong>${escapeHtml(title)}</strong><br>${escapeHtml(String(value))}<br><small>${escapeHtml(subtitle)}</small>${filterStatus ? '<br><small>Clique para aplicar filtro.</small>' : ''}`;
   return `<article class="kpi-card ${escapeHtml(variant)} ${filterStatus ? 'kpi-clickable' : ''}" ${action} data-summary="${escapeHtml(summary)}"><div class="kpi-top"><span class="kpi-title">${escapeHtml(title)}</span><span class="kpi-icon">${escapeHtml(icon)}</span></div><div class="kpi-value">${escapeHtml(String(value))}</div><div class="kpi-subtitle">${escapeHtml(subtitle)}</div></article>`;
 }
-function sourceFilterLabel(value = STATE.filters.source) { return value && value !== 'all' ? value : 'Consolidado BA + SP'; }
-
 function renderSourcePanels() {
-  const rows = STATE.filtered;
-  if (!rows.length) { document.getElementById('sourcePanels').innerHTML = emptyState('Nenhuma informação para a unidade selecionada nos filtros.'); return; }
-  if (STATE.filters.source === 'all') {
-    const totalMetrics = computeMetrics(rows);
-    const cards = CONFIG.sources.map((source) => {
-      const sourceRows = rows.filter((row) => row.source === source.short);
-      const m = computeMetrics(sourceRows);
-      return `<div class="source-card selected-source" style="border-color:${source.color}44"><strong>${escapeHtml(source.short)}</strong><div class="source-metrics"><span><b>${formatInteger(sourceRows.length)}</b> registros</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.delivered)}</b> entregues</span><span><b>${m.ontimeRate}%</b> ONTIME unidade</span></div></div>`;
-    }).join('');
-    document.getElementById('sourcePanels').innerHTML = `<div class="source-card selected-source source-card-total"><strong>Consolidado BA + SP</strong><div class="source-metrics"><span><b>${formatInteger(rows.length)}</b> registros</span><span><b>${formatInteger(totalMetrics.delayed)}</b> atrasos</span><span><b>${formatInteger(totalMetrics.delivered)}</b> entregues</span><span><b>${totalMetrics.ontimeRate}%</b> ONTIME total</span></div></div>${cards}`;
-    return;
-  }
   const source = CONFIG.sources.find((item) => item.short === STATE.filters.source) || CONFIG.sources[0];
+  const rows = STATE.filtered;
   const m = computeMetrics(rows);
   const html = `<div class="source-card selected-source" style="border-color:${source.color}44"><strong>${escapeHtml(source.short)}</strong><div class="source-metrics"><span><b>${formatInteger(rows.length)}</b> registros</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.delivered)}</b> entregues</span><span><b>${m.ontimeRate}%</b> ONTIME unidade</span></div></div>`;
-  document.getElementById('sourcePanels').innerHTML = html;
+  document.getElementById('sourcePanels').innerHTML = rows.length ? html : emptyState('Nenhuma informação para a unidade selecionada nos filtros.');
 }
 
 function renderPerformance() {
@@ -905,7 +882,7 @@ function renderPerformance() {
   const rate = eligible.length ? Math.round((ontime / eligible.length) * 100) : 0;
   document.getElementById('performanceKpis').innerHTML = [
     kpiCard('Percentual consolidado', `${consolidatedRate}%`, `BA + SP • ${formatInteger(consolidatedEligible.length)} notas elegíveis`, '🎯', consolidatedRate >= 90 ? 'success' : consolidatedRate >= 75 ? 'warn' : 'danger'),
-    kpiCard(`Notas ${sourceFilterLabel()}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', '🧾'),
+    kpiCard(`Notas ${STATE.filters.source}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', '🧾'),
     kpiCard('Dentro do prazo', formatInteger(ontime), `${rate}% de aderência da unidade`, '✅', 'success'),
     kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base ONTIME`, '⚠', 'danger', 'delayed'),
     kpiCard('Em trânsito não contado', formatInteger(notCountedTransit), 'Dentro do prazo ou sem fechamento', '🚚', 'info', 'transit')
@@ -1257,41 +1234,28 @@ function reportScheduleBlock(rows) {
 function renderMap() {
   const mapRows = getMapRows();
   const selected = STATE.selectedRegion;
-  const selectedUf = STATE.selectedMapUf || '';
-  const selectedCity = STATE.selectedMapCity || '';
-  const selectedCityUf = STATE.selectedMapCityUf || selectedUf;
-  const regionRows = selected === 'all' ? mapRows : mapRows.filter((row) => row.region === selected);
-  let panelRows = selectedUf ? regionRows.filter((row) => row.uf === selectedUf) : regionRows;
-  if (selectedCity) panelRows = panelRows.filter((row) => sameCity(row.cidade, selectedCity) && (!selectedCityUf || selectedCityUf === 'Sem UF' || row.uf === selectedCityUf));
+  const panelRows = selected === 'all' ? mapRows : mapRows.filter((row) => row.region === selected);
   const panelMetric = computeRegionMetrics(panelRows);
-  const scopeLabel = selectedCity ? `${selectedCity}${selectedCityUf ? ` / ${selectedCityUf}` : ''}` : selectedUf ? `${selectedUf} • ${selected || CONFIG.regionByUf[selectedUf] || 'Região'}` : selected === 'all' ? 'Brasil' : selected;
+  const scopeLabel = selected === 'all' ? 'Brasil' : selected;
   const statusLabel = selectedMapStatusLabel();
   const cityCount = getCityMapEntries(panelRows).length;
 
-  setText('mapFocusTitle', selectedCity ? `Cidade filtrada • ${selectedCity}` : selectedUf ? `Mapa da UF • ${selectedUf}` : selected === 'all' ? 'Mapa operacional do Brasil' : `Mapa regional • ${selected}`);
-  setText('mapFocusSub', selectedCity
-    ? `${formatInteger(panelRows.length)} registros para ${selectedCity}${selectedCityUf ? ` / ${selectedCityUf}` : ''}; dê dois cliques no card para abrir os detalhes completos.`
-    : selectedUf
-      ? `${formatInteger(panelRows.length)} registros em ${selectedUf}; cidades e observações aparecem por relevância.`
-      : selected === 'all'
-        ? `${formatInteger(panelRows.length)} registros no filtro ${statusLabel}. Clique em um estado para aproximar a região e abrir as cidades com dados.`
-        : `${formatInteger(panelRows.length)} registros em ${selected}; clique em uma UF para aproximar novamente e abrir o mapa da UF.`);
+  setText('mapFocusTitle', selected === 'all' ? 'Mapa operacional do Brasil' : `Mapa regional • ${selected}`);
+  setText('mapFocusSub', selected === 'all'
+    ? `${formatInteger(panelRows.length)} registros no filtro ${statusLabel}. Clique em uma região do mapa para abrir a visão por cidades.`
+    : `${formatInteger(panelRows.length)} registros em ${selected}; ${formatInteger(cityCount)} cidade(s) com informação nos filtros atuais.`);
   setText('mapScopeBadge', `${scopeLabel} • ${statusLabel}`);
 
-  renderHeatmapBrazil(mapRows, selected, selectedUf);
-  document.getElementById('regionPanelTitle').textContent = selectedCity ? `Informações de ${selectedCity}` : selectedUf ? `Informações da UF ${selectedUf}` : selected === 'all' ? 'Informações do Brasil' : `Informações de ${selected}`;
-  document.getElementById('regionPanelSub').textContent = selectedCity
-    ? `${formatInteger(panelRows.length)} registros da cidade no mapa (${statusLabel}). Passe o mouse nos cards para mini gráfico; dois cliques abrem detalhes.`
-    : selectedUf
-      ? `${formatInteger(panelRows.length)} registros na UF (${statusLabel}); cidades priorizadas por volume, atraso, ocorrência e observação.`
-      : selected === 'all'
-        ? `${formatInteger(panelRows.length)} registros no mapa filtrado (${statusLabel}).`
-        : `${formatInteger(panelRows.length)} registros filtrados; detalhes abaixo acompanham cidades, estados e status do mapa.`;
+  renderHeatmapBrazil(mapRows, selected);
+  document.getElementById('regionPanelTitle').textContent = selected === 'all' ? 'Informações do Brasil' : `Informações de ${selected}`;
+  document.getElementById('regionPanelSub').textContent = selected === 'all'
+    ? `${formatInteger(panelRows.length)} registros no mapa filtrado (${statusLabel}).`
+    : `${formatInteger(panelRows.length)} registros filtrados; detalhes abaixo acompanham cidades, estados e status do mapa.`;
   renderRegionSummary(panelMetric);
-  renderMapStateBreakdown(panelRows, selected, selectedUf);
-  renderMapCityBreakdown(panelRows, selected, selectedUf, selectedCity);
-  renderInsights('mapAiAlerts', buildMapAlerts(panelRows, selectedUf || selected));
-  renderRecordsTable('mapTable', panelRows, { limit: 300, empty: 'Nenhum registro para a região/UF/status selecionado.' });
+  renderMapStateBreakdown(panelRows, selected);
+  renderMapCityBreakdown(panelRows, selected);
+  renderInsights('mapAiAlerts', buildMapAlerts(panelRows, selected));
+  renderRecordsTable('mapTable', panelRows, { limit: 300, empty: 'Nenhum registro para a região/status selecionado.' });
 }
 
 async function loadBrazilGeoJson() {
@@ -1310,16 +1274,14 @@ async function loadBrazilGeoJson() {
   }
 }
 
-function renderHeatmapBrazil(rows, selected, selectedUf = '') {
+function renderHeatmapBrazil(rows, selected) {
   const visibleRows = selected === 'all' ? rows : rows.filter((row) => row.region === selected);
-  const ufRows = selectedUf ? visibleRows.filter((row) => row.uf === selectedUf) : visibleRows;
   if (STATE.brazilGeoJson) {
-    if (selectedUf) renderGeoUf(ufRows, selectedUf, selected || CONFIG.regionByUf[selectedUf] || '');
-    else if (selected !== 'all') renderGeoRegion(visibleRows, selected);
+    if (selected !== 'all') renderGeoRegion(visibleRows, selected);
     else renderGeoBrazil(rows, selected);
     return;
   }
-  renderSimplifiedBrazil(ufRows, selectedUf ? CONFIG.regionByUf[selectedUf] || selected : selected);
+  renderSimplifiedBrazil(visibleRows, selected);
 }
 
 function bindMapZoomEvents() {
@@ -1354,71 +1316,11 @@ function adjustMapZoom(delta) {
 function resetMapZoom() {
   STATE.mapZoom = 1; STATE.mapPanX = 0; STATE.mapPanY = 0; applyMapZoom();
 }
-function resetMapView() {
-  cancelMapSingleClick();
-  STATE.selectedRegion = 'all';
-  STATE.selectedMapUf = '';
-  STATE.selectedMapCity = '';
-  STATE.selectedMapCityUf = '';
-  if (DOM.mapRegionFilter) DOM.mapRegionFilter.value = 'all';
-  resetMapZoom();
-  renderMap();
-}
 function applyMapZoom() {
   if (!DOM.brazilMap) return;
   DOM.brazilMap.style.transform = `translate(${STATE.mapPanX}px, ${STATE.mapPanY}px) scale(${STATE.mapZoom})`;
   DOM.brazilMap.style.cursor = STATE.mapZoom > 1 ? 'grab' : 'zoom-in';
   if (DOM.mapZoomLevel) DOM.mapZoomLevel.textContent = `${Math.round(STATE.mapZoom * 100)}%`;
-}
-function openRegionFromMap(region, uf = '') {
-  if (!region || region === 'Sem região') return;
-  hideTooltip();
-  if (STATE.mapTransitionTimer) window.clearTimeout(STATE.mapTransitionTimer);
-  const map = DOM.brazilMap;
-  if (map) {
-    map.dataset.openingUf = uf || '';
-    map.classList.remove('map-region-opening');
-    void map.offsetWidth;
-    map.classList.add('map-region-opening');
-  }
-  STATE.mapTransitionTimer = window.setTimeout(() => {
-    STATE.selectedRegion = region;
-    STATE.selectedMapUf = '';
-    STATE.selectedMapCity = '';
-    STATE.selectedMapCityUf = '';
-    DOM.mapRegionFilter.value = region;
-    resetMapZoom();
-    if (map) map.classList.remove('map-region-opening');
-    renderMap();
-  }, 320);
-}
-function openUfFromMap(uf) {
-  if (!uf) return;
-  const region = CONFIG.regionByUf[uf] || STATE.selectedRegion || 'all';
-  hideTooltip();
-  if (STATE.mapTransitionTimer) window.clearTimeout(STATE.mapTransitionTimer);
-  const map = DOM.brazilMap;
-  if (map) {
-    map.dataset.openingUf = uf;
-    map.classList.remove('map-region-opening', 'map-uf-opening');
-    void map.offsetWidth;
-    map.classList.add('map-uf-opening');
-  }
-  STATE.mapTransitionTimer = window.setTimeout(() => {
-    STATE.selectedRegion = region;
-    STATE.selectedMapUf = uf;
-    STATE.selectedMapCity = '';
-    STATE.selectedMapCityUf = '';
-    if (DOM.mapRegionFilter) DOM.mapRegionFilter.value = region;
-    resetMapZoom();
-    if (map) map.classList.remove('map-uf-opening');
-    renderMap();
-  }, 340);
-}
-function stateLabelPoint(uf, geometry, bounds) {
-  const coord = UF_GEO_LABELS[uf];
-  if (coord) return projectGeo(coord, bounds);
-  return featureCentroid(geometry, bounds);
 }
 
 function renderGeoBrazil(rows, selected) {
@@ -1427,7 +1329,6 @@ function renderGeoBrazil(rows, selected) {
   const maxUf = Math.max(1, ...Object.values(ufGroups).map((items) => items.length));
   const paths = [];
   const spots = [];
-  const stateLabels = [];
   const bounds = getGeoBounds(features);
   features.forEach((feature) => {
     const uf = getFeatureUf(feature);
@@ -1438,12 +1339,11 @@ function renderGeoBrazil(rows, selected) {
     const path = geometryToSvgPath(feature.geometry, bounds);
     const fill = stateColor(region, selected === region || STATE.filters.uf === uf, items.length, maxUf);
     paths.push(`<path class="br-state map-region ${selected === region || STATE.filters.uf === uf ? 'active' : ''}" data-uf="${uf}" data-region="${region}" d="${path}" fill="${fill}" data-summary="${escapeHtml(`<strong>${uf} • ${region}</strong><br>${formatInteger(items.length)} registros<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências<br>${formatInteger(metric.returns)} devoluções`)}"></path>`);
-    const center = stateLabelPoint(uf, feature.geometry, bounds);
-    stateLabels.push(`<text class="geo-state-label ${STATE.filters.uf === uf ? 'active' : ''}" x="${center.x.toFixed(1)}" y="${center.y.toFixed(1)}" text-anchor="middle">${uf}</text>`);
     if (items.length) {
+      const center = featureCentroid(feature.geometry, bounds);
       const weight = items.length + metric.delayed * 1.6 + metric.occurrences * 1.25 + metric.returns * 1.25;
       const radius = Math.min(34, 8 + Math.sqrt(weight / maxUf) * 30);
-      spots.push(`<g class="heat-spot geo-heat" data-uf="${uf}" data-region="${region}" transform="translate(${center.x.toFixed(1)} ${center.y.toFixed(1)})"><circle r="${radius}" fill="#00d68f" opacity="0.25"></circle><circle r="${radius * 0.62}" fill="#48ff9b" opacity="0.38"></circle><circle r="${radius * 0.34}" fill="#06141f" opacity="0.62"></circle><text y="4" class="heat-label" text-anchor="middle">${formatCompact(items.length)}</text></g>`);
+      spots.push(`<g class="heat-spot geo-heat" data-uf="${uf}" transform="translate(${center.x} ${center.y})"><circle r="${radius}" fill="#00d68f" opacity="0.25"></circle><circle r="${radius * 0.62}" fill="#48ff9b" opacity="0.38"></circle><circle r="${radius * 0.34}" fill="#06141f" opacity="0.62"></circle><text y="4" class="heat-label" text-anchor="middle">${uf}</text></g>`);
     }
   });
   document.getElementById('brazilMap').innerHTML = `
@@ -1456,7 +1356,7 @@ function renderGeoBrazil(rows, selected) {
       <g class="geo-grid" opacity=".32"><path d="M34 115 C130 76 211 94 289 138 C382 190 458 166 586 112"></path><path d="M24 366 C132 304 239 312 336 361 C437 412 505 377 603 328"></path><path d="M115 12 C142 148 140 300 111 578"></path><path d="M505 10 C468 146 474 312 517 579"></path></g>
       <g class="geo-brazil" filter="url(#geoShadow)">${paths.join('')}</g>
       <g class="geo-heat-layer">${spots.join('')}</g>
-      <g class="geo-state-labels">${stateLabels.join('')}</g>
+      <g class="geo-labels"><text x="424" y="355" class="capital-dot">● BRASÍLIA</text><text x="236" y="150">Manaus</text><text x="388" y="458">São Paulo</text><text x="494" y="318">Recife</text><text x="482" y="381">Salvador</text></g>
       <g class="heat-legend" transform="translate(414 528)"><rect width="186" height="42" rx="12" fill="rgba(255,255,255,.86)"></rect><circle cx="20" cy="21" r="10" fill="#00d68f" opacity=".45"></circle><circle cx="48" cy="21" r="10" fill="#48ff9b" opacity=".55"></circle><circle cx="76" cy="21" r="10" fill="#06141f" opacity=".7"></circle><text x="98" y="18">Mapa de calor</text><text x="98" y="32">volume e criticidade</text></g>
     </svg>`;
   const map = document.getElementById('brazilMap');
@@ -1466,15 +1366,23 @@ function renderGeoBrazil(rows, selected) {
       showUfTooltip(event, uf, rows.filter((row) => row.uf === uf));
     });
     path.addEventListener('mouseleave', hideTooltip);
-    path.addEventListener('click', () => scheduleMapSingleClick(() => openRegionFromMap(path.dataset.region || CONFIG.regionByUf[path.dataset.uf] || 'all', path.dataset.uf)));
-    path.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('state', path.dataset.uf || ''); });
+    path.addEventListener('click', () => {
+      STATE.selectedRegion = path.dataset.region || CONFIG.regionByUf[path.dataset.uf] || 'all';
+      DOM.mapRegionFilter.value = STATE.selectedRegion;
+      resetMapZoom();
+      renderMap();
+    });
   });
   map.querySelectorAll('.heat-spot').forEach((spot) => {
     const uf = spot.dataset.uf;
     spot.addEventListener('mousemove', (event) => showUfTooltip(event, uf, rows.filter((row) => row.uf === uf)));
     spot.addEventListener('mouseleave', hideTooltip);
-    spot.addEventListener('click', () => scheduleMapSingleClick(() => openRegionFromMap(CONFIG.regionByUf[uf] || 'all', uf)));
-    spot.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('state', uf); });
+    spot.addEventListener('click', () => {
+      STATE.selectedRegion = CONFIG.regionByUf[uf] || 'all';
+      DOM.mapRegionFilter.value = STATE.selectedRegion;
+      resetMapZoom();
+      renderMap();
+    });
   });
   applyMapZoom();
 }
@@ -1499,7 +1407,7 @@ function renderGeoRegion(rows, selected) {
     const path = geometryToSvgPath(feature.geometry, bounds);
     const active = STATE.filters.uf === uf;
     const fill = stateColor(selected, active, items.length, maxUf);
-    const center = stateLabelPoint(uf, feature.geometry, bounds);
+    const center = featureCentroid(feature.geometry, bounds);
     stateCenters[uf] = center;
     paths.push(`<path class="br-state map-region ${active ? 'active' : ''}" data-uf="${uf}" data-region="${selected}" d="${path}" fill="${fill}" data-summary="${escapeHtml(`<strong>${uf} • ${selected}</strong><br>${formatInteger(items.length)} registros no estado<br>${formatInteger(metric.transit)} em trânsito • ${formatInteger(metric.delayed)} atrasos<br>${formatInteger(metric.occurrences)} ocorrências • ${formatInteger(metric.returns)} devoluções<br><small>Contabilização: UF do estado e filtros atuais do mapa.</small>`)}"></path>`);
     labels.push(`<text class="state-focus-label" x="${center.x.toFixed(1)}" y="${center.y.toFixed(1)}" text-anchor="middle">${uf}</text>`);
@@ -1522,7 +1430,7 @@ function renderGeoRegion(rows, selected) {
   }).join('');
   const cityCards = cityEntries.slice(0, 6).map((entry) => {
     const metric = computeRegionMetrics(entry.rows);
-    return `<button type="button" class="city-svg-detail" data-city="${escapeHtml(entry.city)}" data-uf="${escapeHtml(entry.uf)}"><b>${escapeHtml(entry.city)}</b>${escapeHtml(entry.uf)} • ${formatInteger(entry.rows.length)} reg. • ${formatInteger(metric.delayed)} atraso(s)</button>`;
+    return `<span><b>${escapeHtml(entry.city)}</b>${escapeHtml(entry.uf)} • ${formatInteger(entry.rows.length)} reg. • ${formatInteger(metric.delayed)} atraso(s)</span>`;
   }).join('');
   document.getElementById('brazilMap').innerHTML = `
     <svg viewBox="0 0 620 590" role="img" aria-label="Mapa ampliado da região ${escapeHtml(selected)} por cidades">
@@ -1545,8 +1453,7 @@ function renderGeoRegion(rows, selected) {
     const ufRows = rows.filter((row) => row.uf === uf);
     node.addEventListener('mousemove', (event) => showUfTooltip(event, uf, ufRows));
     node.addEventListener('mouseleave', hideTooltip);
-    node.addEventListener('click', () => scheduleMapSingleClick(() => openUfFromMap(uf)));
-    node.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('state', uf); });
+    node.addEventListener('click', () => { DOM.filterUf.value = DOM.filterUf.value === uf ? 'all' : uf; onFilterChange(); });
   });
   map.querySelectorAll('.map-city-spot').forEach((node) => {
     const city = node.dataset.city || '';
@@ -1554,86 +1461,9 @@ function renderGeoRegion(rows, selected) {
     const cityRows = rows.filter((row) => sameCity(row.cidade, city) && (!uf || row.uf === uf));
     node.addEventListener('mousemove', (event) => showCityTooltip(event, city, uf, cityRows));
     node.addEventListener('mouseleave', hideTooltip);
-    node.addEventListener('click', () => scheduleMapSingleClick(() => focusMapCity(city, uf)));
-    node.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('city', city, uf); });
-  });
-  map.querySelectorAll('.city-svg-detail').forEach((button) => {
-    button.addEventListener('click', () => scheduleMapSingleClick(() => focusMapCity(button.dataset.city || '', button.dataset.uf || '')));
-    button.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('city', button.dataset.city || '', button.dataset.uf || ''); });
+    node.addEventListener('click', () => focusMapCity(city, uf));
   });
   applyMapZoom();
-}
-
-function renderGeoUf(rows, uf, region) {
-  const allFeatures = STATE.brazilGeoJson.features || [];
-  const feature = allFeatures.find((item) => getFeatureUf(item) === uf);
-  if (!feature) { renderGeoRegion(rows, region || CONFIG.regionByUf[uf] || ''); return; }
-  const metric = computeRegionMetrics(rows);
-  const cityEntries = getCityMapEntries(rows).slice(0, 36);
-  const maxCity = Math.max(1, ...cityEntries.map((entry) => entry.rows.length));
-  const bounds = getGeoBounds([feature]);
-  const path = geometryToSvgPath(feature.geometry, bounds);
-  const center = stateLabelPoint(uf, feature.geometry, bounds);
-  const citySpots = cityEntries.map((entry, index) => {
-    const entryMetric = computeRegionMetrics(entry.rows);
-    const point = cityPointForUf(entry, center, index);
-    const weight = cityRelevanceScore(entry.rows);
-    const radius = Math.min(34, 8 + Math.sqrt(weight / Math.max(1, cityRelevanceScore(cityEntries[0]?.rows || []))) * 25);
-    const delayedClass = entryMetric.delayed || entryMetric.occurrences || entryMetric.returns ? 'has-delay' : '';
-    const label = index < 14 ? `<text y="${(-radius - 7).toFixed(1)}" class="city-bubble-label" text-anchor="middle">${escapeHtml(truncate(entry.city, 16))}</text>` : '';
-    return `<g class="map-city-spot ${delayedClass}" data-city="${escapeHtml(entry.city)}" data-uf="${escapeHtml(entry.uf)}" transform="translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})">
-      <circle r="${(radius + 8).toFixed(1)}" class="city-pulse"></circle>
-      <circle r="${radius.toFixed(1)}" class="city-volume"></circle>
-      <circle r="${Math.max(4, radius * .42).toFixed(1)}" class="city-core"></circle>
-      <text y="4" class="city-count" text-anchor="middle">${formatCompact(entry.rows.length)}</text>
-      ${label}
-    </g>`;
-  }).join('');
-  const observationCards = cityEntries.slice(0, 6).map((entry, index) => {
-    const entryMetric = computeRegionMetrics(entry.rows);
-    const detail = `city|||${entry.city}|||${entry.uf}`;
-    return `<button type="button" class="uf-observation-card" data-map-detail="${escapeHtml(detail)}" data-action="mapGroup" data-value="city|||${escapeHtml(entry.city)}|||${escapeHtml(entry.uf)}" data-summary="${escapeHtml(mapMiniChartHtml(`${entry.city} / ${entry.uf}`, entry.rows, cityRelevanceObservation(entry.rows)))}"><b>${index + 1}. ${escapeHtml(entry.city)}</b><span>${formatInteger(entry.rows.length)} reg. • ${formatInteger(entryMetric.delayed)} atraso(s) • ${formatInteger(entryMetric.occurrences)} ocorr.</span><small>${escapeHtml(cityRelevanceObservation(entry.rows))}</small></button>`;
-  }).join('');
-  document.getElementById('brazilMap').innerHTML = `
-    <svg viewBox="0 0 620 590" role="img" aria-label="Mapa da UF ${escapeHtml(uf)} com cidades relevantes">
-      <defs>
-        <linearGradient id="ufSea" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8f5f8"/><stop offset="1" stop-color="#f7fbfc"/></linearGradient>
-        <filter id="ufShadow"><feDropShadow dx="0" dy="12" stdDeviation="9" flood-color="#03121c" flood-opacity=".20"/></filter>
-      </defs>
-      <rect x="0" y="0" width="620" height="590" fill="url(#ufSea)" rx="22"></rect>
-      <g class="region-focus-bg"><path d="M34 128 C148 74 246 91 337 145 C427 199 508 175 596 120"></path><path d="M18 404 C132 331 255 340 366 397 C461 446 526 412 604 365"></path></g>
-      <g class="uf-focus-map" filter="url(#ufShadow)"><path class="br-state map-region active" data-uf="${escapeHtml(uf)}" data-region="${escapeHtml(region || CONFIG.regionByUf[uf] || '')}" d="${path}" fill="${stateColor(region || CONFIG.regionByUf[uf] || '', true, rows.length, Math.max(1, rows.length))}"></path></g>
-      <g class="state-focus-labels"><text class="state-focus-label active uf-focus-label" x="${center.x.toFixed(1)}" y="${center.y.toFixed(1)}" text-anchor="middle">${escapeHtml(uf)}</text></g>
-      <g class="city-heat-layer">${citySpots}</g>
-      <g class="region-focus-title" transform="translate(24 28)"><rect width="318" height="66" rx="16" fill="rgba(255,255,255,.88)"></rect><text x="16" y="24">UF ${escapeHtml(uf)}</text><text x="16" y="44">${formatInteger(rows.length)} registros • cidades por relevância</text></g>
-      <g class="city-legend" transform="translate(390 28)"><rect width="206" height="58" rx="16" fill="rgba(255,255,255,.88)"></rect><circle cx="20" cy="29" r="10" class="city-volume"></circle><circle cx="54" cy="29" r="10" class="city-volume delay"></circle><text x="76" y="24">Cidades da UF</text><text x="76" y="40">volume + criticidade</text></g>
-      <foreignObject x="318" y="390" width="284" height="184"><div xmlns="http://www.w3.org/1999/xhtml" class="uf-observation-list">${observationCards || '<span class="empty-state">Sem cidades com dados nesta UF.</span>'}</div></foreignObject>
-    </svg>`;
-  const map = document.getElementById('brazilMap');
-  map.querySelectorAll('.map-city-spot').forEach((node) => {
-    const city = node.dataset.city || '';
-    const cityUf = node.dataset.uf || uf;
-    const cityRows = rows.filter((row) => sameCity(row.cidade, city) && row.uf === cityUf);
-    node.addEventListener('mousemove', (event) => showCityTooltip(event, city, cityUf, cityRows));
-    node.addEventListener('mouseleave', hideTooltip);
-    node.addEventListener('click', () => scheduleMapSingleClick(() => focusMapCity(city, cityUf)));
-    node.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('city', city, cityUf); });
-  });
-  map.querySelectorAll('.uf-observation-card').forEach((button) => {
-    const [, city = '', cityUf = ''] = String(button.dataset.mapDetail || '').split('|||');
-    button.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('city', city, cityUf); });
-  });
-  applyMapZoom();
-}
-
-function cityPointForUf(entry, center, index) {
-  const seed = hashString(`${entry.city}|${entry.uf}|uf`);
-  const angle = ((seed % 360) * Math.PI) / 180;
-  const ring = Math.floor(index / 6);
-  const radius = 24 + (seed % 58) + ring * 22;
-  const x = Math.min(585, Math.max(36, center.x + Math.cos(angle) * radius));
-  const y = Math.min(552, Math.max(54, center.y + Math.sin(angle) * radius));
-  return { x, y };
 }
 
 function renderSimplifiedBrazil(rows, selected) {
@@ -1652,7 +1482,6 @@ function renderSimplifiedBrazil(rows, selected) {
   const labelPos = { Norte: [218, 165], Nordeste: [455, 214], 'Centro-Oeste': [285, 335], Sudeste: [419, 418], Sul: [245, 462] };
   const colors = { Norte: '#dfeef4', Nordeste: '#e6f0ec', 'Centro-Oeste': '#e6ebf4', Sudeste: '#edf0f7', Sul: '#e9f4ec' };
   const ufGroups = groupBy(rows.filter((row) => row.uf && UF_MAP_POINTS[row.uf]), (row) => row.uf);
-  const allUfLabels = Object.entries(UF_MAP_POINTS).map(([uf, point]) => `<text class="geo-state-label simplified-state-label" x="${point.x}" y="${point.y}" text-anchor="middle">${uf}</text>`).join('');
   const maxUf = Math.max(1, ...Object.values(ufGroups).map((items) => items.length));
   const heatSpots = Object.entries(ufGroups).map(([uf, items]) => {
     const point = UF_MAP_POINTS[uf];
@@ -1698,7 +1527,6 @@ function renderSimplifiedBrazil(rows, selected) {
         <text x="235" y="164">Manaus</text><text x="397" y="352">Brasília</text><text x="386" y="466">São Paulo</text><text x="477" y="371">Salvador</text><text x="524" y="304">Recife</text>
       </g>
       ${regions.map((region) => `<text class="map-label region-heat-label" x="${labelPos[region][0]}" y="${labelPos[region][1]}">${region}</text>`).join('')}
-      <g class="geo-state-labels simplified-state-labels">${allUfLabels}</g>
       <g class="heat-legend" transform="translate(425 528)">
         <rect width="174" height="42" rx="7" fill="rgba(255,255,255,.82)"></rect>
         <circle cx="18" cy="21" r="10" fill="#11e680" opacity=".45"></circle><circle cx="44" cy="21" r="10" fill="#ffe100" opacity=".6"></circle><circle cx="70" cy="21" r="10" fill="#ff1e1e" opacity=".76"></circle>
@@ -1710,16 +1538,19 @@ function renderSimplifiedBrazil(rows, selected) {
   map.querySelectorAll('.map-region').forEach((path) => {
     path.addEventListener('mousemove', (event) => showMapTooltip(event, path.dataset.region, regionMetrics[path.dataset.region]));
     path.addEventListener('mouseleave', hideTooltip);
-    path.addEventListener('click', () => scheduleMapSingleClick(() => openRegionFromMap(path.dataset.region || 'all')));
-    path.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('region', path.dataset.region || 'all'); });
+    path.addEventListener('click', () => {
+      STATE.selectedRegion = STATE.selectedRegion === path.dataset.region ? 'all' : path.dataset.region;
+      DOM.mapRegionFilter.value = STATE.selectedRegion;
+      resetMapZoom();
+      renderMap();
+    });
   });
   map.querySelectorAll('.heat-spot').forEach((spot) => {
     const uf = spot.dataset.uf;
     const ufRows = rows.filter((row) => row.uf === uf);
     spot.addEventListener('mousemove', (event) => showUfTooltip(event, uf, ufRows));
     spot.addEventListener('mouseleave', hideTooltip);
-    spot.addEventListener('click', () => scheduleMapSingleClick(() => openRegionFromMap(CONFIG.regionByUf[uf] || 'all', uf)));
-    spot.addEventListener('dblclick', (event) => { event.preventDefault(); openMapGroupDetail('state', uf); });
+    spot.addEventListener('click', () => { DOM.filterUf.value = DOM.filterUf.value === uf ? 'all' : uf; onFilterChange(); });
   });
   applyMapZoom();
 }
@@ -1801,7 +1632,8 @@ function evolutionHtml(rows) {
 }
 
 function showUfTooltip(event, uf, rows) {
-  DOM.tooltip.innerHTML = mapMiniChartHtml(`UF ${uf}`, rows, 'Um clique filtra/abre a UF no mapa; dois cliques abrem detalhes.');
+  const metric = computeRegionMetrics(rows);
+  DOM.tooltip.innerHTML = `<strong>${escapeHtml(uf)}</strong><br>${formatInteger(rows.length)} entregas/notas nos filtros<br>${formatInteger(metric.open)} em aberto • ${formatInteger(metric.transit)} em trânsito<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências • ${formatInteger(metric.returns)} devoluções<br><small>Contabilização: UF de destino e status calculado nos filtros atuais.</small>`;
   DOM.tooltip.style.left = `${event.clientX}px`;
   DOM.tooltip.style.top = `${event.clientY}px`;
   DOM.tooltip.classList.add('visible');
@@ -1814,41 +1646,7 @@ const UF_MAP_POINTS = {
   MG: { x: 430, y: 420 }, ES: { x: 487, y: 440 }, RJ: { x: 461, y: 468 }, SP: { x: 389, y: 466 },
   PR: { x: 365, y: 501 }, SC: { x: 383, y: 529 }, RS: { x: 370, y: 558 }
 };
-const UF_GEO_LABELS = {
-  AC: [-70.4, -9.2], AM: [-64.7, -4.8], RR: [-61.3, 1.7], AP: [-51.8, 1.2], PA: [-52.4, -4.1], RO: [-63.4, -10.9], TO: [-48.3, -10.2],
-  MA: [-45.4, -5.1], PI: [-42.8, -7.4], CE: [-39.5, -5.3], RN: [-36.8, -5.8], PB: [-36.7, -7.1], PE: [-37.8, -8.4], AL: [-36.6, -9.6], SE: [-37.3, -10.6], BA: [-41.8, -12.7],
-  MT: [-56.0, -12.7], MS: [-54.6, -20.4], GO: [-49.9, -16.1], DF: [-47.9, -15.8],
-  MG: [-44.4, -18.7], ES: [-40.3, -19.7], RJ: [-42.9, -22.2], SP: [-48.4, -22.5],
-  PR: [-51.6, -24.7], SC: [-50.0, -27.3], RS: [-53.2, -30.0]
-};
 
-function mapMiniChartHtml(label, rows, note = '') {
-  const list = rows || [];
-  const metric = computeRegionMetrics(list);
-  const values = [
-    ['Registros', list.length, '#1789c9'], ['Trânsito', metric.transit, '#1f8fca'], ['Atrasos', metric.delayed, '#d93d5b'],
-    ['Ocorr.', metric.occurrences, '#e9a700'], ['Devol.', metric.returns, '#7c5cff']
-  ];
-  const max = Math.max(1, ...values.map(([, value]) => value));
-  return `<div class="mini-map-chart"><strong>${escapeHtml(label)}</strong><div class="mini-map-chart-grid">${values.map(([name, value, color]) => `<span><em>${escapeHtml(name)}</em><b>${formatInteger(value)}</b><i style="--w:${Math.max(5, (value / max) * 100).toFixed(1)}%;--c:${color}"></i></span>`).join('')}</div>${note ? `<small>${escapeHtml(note)}</small>` : ''}</div>`;
-}
-function cityRelevanceScore(rows) {
-  const metric = computeRegionMetrics(rows || []);
-  const noted = (rows || []).filter((row) => isPresent(row.observacao) || isPresent(row.occurrenceText) || isPresent(row.occurrenceDescription) || isPresent(row.returnReason)).length;
-  return rows.length + metric.delayed * 5 + metric.occurrences * 3 + metric.returns * 3 + metric.transit * 1.2 + noted * 2;
-}
-function cityRelevanceObservation(rows) {
-  const metric = computeRegionMetrics(rows || []);
-  const source = (rows || []).find((row) => row.delayed && (isPresent(row.occurrenceText) || isPresent(row.observacao) || isPresent(row.status)))
-    || (rows || []).find((row) => row.hasOccurrence && (isPresent(row.occurrenceText) || isPresent(row.occurrenceDescription)))
-    || (rows || []).find((row) => row.hasReturn && (isPresent(row.returnReason) || isPresent(row.returnText)))
-    || (rows || []).find((row) => isPresent(row.observacao));
-  const text = cleanLabel(source?.occurrenceText || source?.occurrenceDescription || source?.returnReason || source?.returnText || source?.observacao || source?.status || '');
-  if (metric.delayed) return `${formatInteger(metric.delayed)} atraso(s)${text ? ` • ${truncate(text, 72)}` : ''}`;
-  if (metric.occurrences) return `${formatInteger(metric.occurrences)} ocorrência(s)${text ? ` • ${truncate(text, 72)}` : ''}`;
-  if (metric.returns) return `${formatInteger(metric.returns)} devolução(ões)${text ? ` • ${truncate(text, 72)}` : ''}`;
-  return text ? truncate(text, 82) : `${formatInteger(rows.length)} registro(s) sem observação crítica.`;
-}
 function formatCompact(value) {
   const number = Number(value) || 0;
   if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1).replace('.', ',')}k`;
@@ -1861,7 +1659,7 @@ function getCityMapEntries(rows) {
   return Object.entries(grouped).map(([key, list]) => {
     const [city, uf] = key.split('|||');
     return { key, city: city || 'Sem cidade', uf: uf || 'Sem UF', rows: list };
-  }).sort((a, b) => cityRelevanceScore(b.rows) - cityRelevanceScore(a.rows) || b.rows.length - a.rows.length || a.city.localeCompare(b.city) || a.uf.localeCompare(b.uf));
+  }).sort((a, b) => b.rows.length - a.rows.length || a.city.localeCompare(b.city) || a.uf.localeCompare(b.uf));
 }
 function hashString(value) {
   return String(value || '').split('').reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0) >>> 0;
@@ -1878,60 +1676,18 @@ function cityPointForRegion(entry, stateCenters, index) {
   return { x, y };
 }
 function focusMapCity(city, uf) {
-  if (!city) return;
-  const region = uf && uf !== 'Sem UF' ? CONFIG.regionByUf[uf] : STATE.selectedRegion;
-  if (region && region !== 'all') STATE.selectedRegion = region;
-  if (uf && uf !== 'Sem UF') STATE.selectedMapUf = uf;
-  STATE.selectedMapCity = city;
-  STATE.selectedMapCityUf = uf || '';
-  if (DOM.mapRegionFilter && STATE.selectedRegion && STATE.selectedRegion !== 'all') DOM.mapRegionFilter.value = STATE.selectedRegion;
-  resetMapZoom();
-  renderMap();
+  if (!DOM.filterSearch || !DOM.filterUf) return;
+  const same = normalizeText(DOM.filterSearch.value) === normalizeText(city) && (!uf || uf === 'Sem UF' || DOM.filterUf.value === uf);
+  DOM.filterSearch.value = same ? '' : city;
+  if (uf && uf !== 'Sem UF') DOM.filterUf.value = same ? 'all' : uf;
+  onFilterChange();
 }
 function showCityTooltip(event, city, uf, rows) {
-  const note = `${cityRelevanceObservation(rows)}. Um clique filtra; dois cliques abrem detalhes.`;
-  DOM.tooltip.innerHTML = mapMiniChartHtml(`${city}${uf && uf !== 'Sem UF' ? ` / ${uf}` : ''}`, rows, note);
+  const metric = computeRegionMetrics(rows);
+  DOM.tooltip.innerHTML = `<strong>${escapeHtml(city)}${uf && uf !== 'Sem UF' ? ` / ${escapeHtml(uf)}` : ''}</strong><br>${formatInteger(rows.length)} registro(s) nos filtros<br>${formatInteger(metric.transit)} em trânsito • ${formatInteger(metric.delayed)} atraso(s)<br>${formatInteger(metric.occurrences)} ocorrência(s) • ${formatInteger(metric.returns)} devolução(ões)<br><small>Clique para filtrar/desfazer esta cidade no painel.</small>`;
   DOM.tooltip.style.left = `${event.clientX}px`;
   DOM.tooltip.style.top = `${event.clientY}px`;
   DOM.tooltip.classList.add('visible');
-}
-function scheduleMapSingleClick(callback) {
-  if (STATE.mapClickTimer) window.clearTimeout(STATE.mapClickTimer);
-  STATE.mapClickTimer = window.setTimeout(() => { STATE.mapClickTimer = null; callback(); }, 230);
-}
-function cancelMapSingleClick() {
-  if (STATE.mapClickTimer) window.clearTimeout(STATE.mapClickTimer);
-  STATE.mapClickTimer = null;
-}
-function openMapGroupDetail(type, value, uf = '') {
-  cancelMapSingleClick();
-  const baseRows = getMapRows();
-  let rows = [];
-  let label = value || 'Seleção do mapa';
-  let context = 'Mapa operacional';
-  if (type === 'state') {
-    rows = baseRows.filter((row) => row.uf === value);
-    label = `Estado ${value}`;
-    context = `UF ${value} no mapa operacional (${selectedMapStatusLabel()})`;
-  } else if (type === 'city') {
-    rows = baseRows.filter((row) => sameCity(row.cidade, value) && (!uf || uf === 'Sem UF' || row.uf === uf));
-    label = `${value}${uf && uf !== 'Sem UF' ? ` / ${uf}` : ''}`;
-    context = `Cidade selecionada no mapa (${selectedMapStatusLabel()})`;
-  } else if (type === 'region') {
-    rows = baseRows.filter((row) => row.region === value);
-    label = `Região ${value}`;
-    context = `Região selecionada no mapa (${selectedMapStatusLabel()})`;
-  }
-  if (!rows.length) { addAiMessage(`Não encontrei registros para ${label} nos filtros atuais do mapa.`); return; }
-  STATE.chartPreviewRows = rows;
-  STATE.chartPreviewLabel = label;
-  STATE.chartPreviewContext = context;
-  if (!DOM.chartPreviewModal) return;
-  DOM.chartPreviewTitle.textContent = `Detalhes do mapa • ${label}`;
-  DOM.chartPreviewBody.innerHTML = chartPreviewHtml(rows, label, context);
-  if (typeof DOM.chartPreviewModal.showModal === 'function') {
-    try { DOM.chartPreviewModal.showModal(); } catch (_) { DOM.chartPreviewModal.setAttribute('open', 'open'); }
-  } else DOM.chartPreviewModal.setAttribute('open', 'open');
 }
 
 function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
@@ -1946,7 +1702,7 @@ function renderRegionSummary(metric) {
   const items = [['Registros no mapa', metric.total], ['Entregas realizadas', metric.completed], ['Entregas em aberto', metric.open], ['Veículos em trânsito', metric.transit], ['Cargas em atraso', metric.delayed], ['Ocorrências', metric.occurrences], ['Devoluções', metric.returns], ['Agendas hoje', metric.todayAgendas]];
   document.getElementById('regionSummary').innerHTML = items.map(([label, value]) => `<div class="region-metric"><span>${escapeHtml(label)}</span><strong>${formatInteger(value)}</strong></div>`).join('');
 }
-function renderMapStateBreakdown(rows, selected, selectedUf = '') {
+function renderMapStateBreakdown(rows, selected) {
   if (!DOM.mapStateBreakdown) return;
   const grouped = groupBy(rows.filter((row) => row.uf), (row) => row.uf);
   const entries = Object.entries(grouped).sort((a, b) => b[1].length - a[1].length);
@@ -1954,36 +1710,32 @@ function renderMapStateBreakdown(rows, selected, selectedUf = '') {
     DOM.mapStateBreakdown.innerHTML = `<div class="empty-state">Sem estados com dados para ${escapeHtml(selected === 'all' ? 'a seleção atual' : selected)}.</div>`;
     return;
   }
-  const title = selectedUf ? `UF ${escapeHtml(selectedUf)} em foco` : `Estados ${selected === 'all' ? 'com maior volume' : `da região ${escapeHtml(selected)}`}`;
-  DOM.mapStateBreakdown.innerHTML = `<div class="state-breakdown-title">${title}</div>${entries.slice(0, selected === 'all' ? 8 : 12).map(([uf, list]) => {
+  DOM.mapStateBreakdown.innerHTML = `<div class="state-breakdown-title">Estados ${selected === 'all' ? 'com maior volume' : `da região ${escapeHtml(selected)}`}</div>${entries.slice(0, selected === 'all' ? 8 : 12).map(([uf, list]) => {
     const metric = computeRegionMetrics(list);
-    const active = selectedUf === uf || STATE.selectedMapUf === uf;
+    const active = DOM.filterUf?.value === uf;
     const rate = list.length ? Math.round((metric.completed / list.length) * 100) : 0;
-    const summary = mapMiniChartHtml(`UF ${uf}`, list, 'Um clique filtra/abre a UF no mapa; dois cliques abrem detalhes completos.');
-    return `<button type="button" class="state-breakdown-card ${active ? 'active' : ''}" data-action="mapGroup" data-value="state|||${escapeHtml(uf)}" data-map-detail="state|||${escapeHtml(uf)}" data-summary="${escapeHtml(summary)}"><span><b>${escapeHtml(uf)}</b><em>${formatInteger(list.length)} reg.</em></span><i><strong>${formatInteger(metric.delayed)}</strong> atraso(s)</i><small>${formatInteger(metric.transit)} trânsito • ${formatInteger(metric.occurrences)} ocorr. • ${rate}% realizadas</small></button>`;
+    const summary = `<strong>${escapeHtml(uf)}</strong><br>${formatInteger(list.length)} registro(s)<br>${formatInteger(metric.transit)} em trânsito • ${formatInteger(metric.delayed)} atraso(s)<br>${formatInteger(metric.occurrences)} ocorrência(s) • ${formatInteger(metric.returns)} devolução(ões)<br><small>Clique para filtrar/desfazer este estado.</small>`;
+    return `<button type="button" class="state-breakdown-card ${active ? 'active' : ''}" data-action="uf" data-value="${escapeHtml(uf)}" data-summary="${escapeHtml(summary)}"><span><b>${escapeHtml(uf)}</b><em>${formatInteger(list.length)} reg.</em></span><i><strong>${formatInteger(metric.delayed)}</strong> atraso(s)</i><small>${formatInteger(metric.transit)} trânsito • ${formatInteger(metric.occurrences)} ocorr. • ${rate}% realizadas</small></button>`;
   }).join('')}`;
 }
-function renderMapCityBreakdown(rows, selected, selectedUf = '', selectedCity = '') {
+function renderMapCityBreakdown(rows, selected) {
   if (!DOM.mapCityBreakdown) return;
   const entries = getCityMapEntries(rows);
   if (!entries.length) {
-    DOM.mapCityBreakdown.innerHTML = `<div class="empty-state">Sem cidades para ${escapeHtml(selectedUf || (selected === 'all' ? 'a seleção atual' : selected))}.</div>`;
+    DOM.mapCityBreakdown.innerHTML = `<div class="empty-state">Sem cidades para ${escapeHtml(selected === 'all' ? 'a seleção atual' : selected)}.</div>`;
     return;
   }
-  const limit = selected === 'all' && !selectedUf ? 10 : selectedUf ? 24 : 18;
-  const title = selectedCity ? `Cidade filtrada: ${escapeHtml(selectedCity)}` : selectedUf ? `Cidades da UF ${escapeHtml(selectedUf)} por relevância` : selected === 'all' ? 'Cidades com maior relevância no Brasil filtrado' : `Cidades da região ${escapeHtml(selected)} por relevância`;
-  DOM.mapCityBreakdown.innerHTML = `<div class="city-breakdown-title">${title}</div>${entries.slice(0, limit).map((entry, index) => {
+  const limit = selected === 'all' ? 10 : 18;
+  DOM.mapCityBreakdown.innerHTML = `<div class="city-breakdown-title">${selected === 'all' ? 'Cidades com maior volume no Brasil filtrado' : `Cidades da região ${escapeHtml(selected)}`}</div>${entries.slice(0, limit).map((entry, index) => {
     const metric = computeRegionMetrics(entry.rows);
-    const active = normalizeText(selectedCity || STATE.selectedMapCity || '') === normalizeText(entry.city) && (!STATE.selectedMapCityUf || STATE.selectedMapCityUf === entry.uf || entry.uf === 'Sem UF');
+    const active = normalizeText(DOM.filterSearch?.value || '') === normalizeText(entry.city) && (DOM.filterUf?.value === entry.uf || entry.uf === 'Sem UF');
     const rate = entry.rows.length ? Math.round((metric.completed / entry.rows.length) * 100) : 0;
     const value = `${entry.city}|||${entry.uf}`;
-    const observation = cityRelevanceObservation(entry.rows);
-    const summary = mapMiniChartHtml(`${entry.city}${entry.uf !== 'Sem UF' ? ` / ${entry.uf}` : ''}`, entry.rows, `${observation}. Um clique filtra; dois cliques abrem detalhes.`);
-    return `<button type="button" class="city-breakdown-card ${active ? 'active' : ''}" data-action="mapGroup" data-value="city|||${escapeHtml(value)}" data-map-detail="city|||${escapeHtml(value)}" data-summary="${escapeHtml(summary)}"><span><b>${index + 1}. ${escapeHtml(entry.city)}</b><em>${escapeHtml(entry.uf)}</em></span><strong>${formatInteger(entry.rows.length)} reg.</strong><small>${formatInteger(metric.delayed)} atraso(s) • ${formatInteger(metric.occurrences)} ocorr. • ${rate}% realizadas</small><small class="city-observation">${escapeHtml(observation)}</small></button>`;
+    const summary = `<strong>${escapeHtml(entry.city)}${entry.uf !== 'Sem UF' ? ` / ${escapeHtml(entry.uf)}` : ''}</strong><br>${formatInteger(entry.rows.length)} registro(s)<br>${formatInteger(metric.transit)} em trânsito • ${formatInteger(metric.delayed)} atraso(s)<br>${formatInteger(metric.occurrences)} ocorrência(s) • ${formatInteger(metric.returns)} devolução(ões)<br><small>Clique para filtrar/desfazer esta cidade.</small>`;
+    return `<button type="button" class="city-breakdown-card ${active ? 'active' : ''}" data-action="mapCity" data-value="${escapeHtml(value)}" data-summary="${escapeHtml(summary)}"><span><b>${index + 1}. ${escapeHtml(entry.city)}</b><em>${escapeHtml(entry.uf)}</em></span><strong>${formatInteger(entry.rows.length)} reg.</strong><small>${formatInteger(metric.delayed)} atraso(s) • ${formatInteger(metric.occurrences)} ocorr. • ${rate}% realizadas</small></button>`;
   }).join('')}`;
 }
-
-function showMapTooltip(event, region, metric) { const fakeRows = Array.from({ length: metric.total || 0 }, (_, index) => ({ id: `metric-${index}`, transit: index < metric.transit, delayed: index < metric.delayed, hasOccurrence: index < metric.occurrences, hasReturn: index < metric.returns })); DOM.tooltip.innerHTML = mapMiniChartHtml(region, fakeRows, 'Região calculada pela UF. Um clique filtra; dois cliques abrem detalhes quando disponível.'); DOM.tooltip.style.left = `${event.clientX}px`; DOM.tooltip.style.top = `${event.clientY}px`; DOM.tooltip.classList.add('visible'); }
+function showMapTooltip(event, region, metric) { DOM.tooltip.innerHTML = `<strong>${escapeHtml(region)}</strong><br>${formatInteger(metric.open)} entregas em aberto • ${formatInteger(metric.transit)} veículos em trânsito<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências • ${formatInteger(metric.returns)} devoluções<br><small>Contabilização: região calculada pela UF e status do mapa.</small>`; DOM.tooltip.style.left = `${event.clientX}px`; DOM.tooltip.style.top = `${event.clientY}px`; DOM.tooltip.classList.add('visible'); }
 function hideTooltip() { DOM.tooltip.classList.remove('visible'); tooltipTarget = null; tooltipEvent = null; }
 function handleSummaryTooltipMove(event) {
   const element = event.target.closest('[data-summary]');
@@ -2143,14 +1895,8 @@ function handleAction(action, value, element = null) {
   if (action === 'dynamicQuickFilter') return toggleDynamicQuickFilter(element?.dataset.axis || 'a', value);
   if (action === 'chartPreview') return openChartPreview(value);
   if (action === 'occurrenceDescription') openOccurrenceDescriptionDetail(value);
-  if (action === 'mapCity') { const [city = '', uf = ''] = String(value || '').split('|||'); scheduleMapSingleClick(() => focusMapCity(city, uf)); }
-  if (action === 'mapGroup') { const [type = '', rawValue = '', rawUf = ''] = String(value || '').split('|||'); scheduleMapSingleClick(() => filterMapGroup(type, rawValue, rawUf)); }
-  if (action === 'region') { const next = value || 'all'; STATE.selectedRegion = STATE.selectedRegion === next ? 'all' : next; STATE.selectedMapUf = ''; STATE.selectedMapCity = ''; STATE.selectedMapCityUf = ''; DOM.mapRegionFilter.value = STATE.selectedRegion; activateTab('map'); }
-}
-function filterMapGroup(type, value, uf = '') {
-  if (type === 'state') return openUfFromMap(value);
-  if (type === 'city') return focusMapCity(value, uf);
-  if (type === 'region') return openRegionFromMap(value);
+  if (action === 'mapCity') { const [city = '', uf = ''] = String(value || '').split('|||'); focusMapCity(city, uf); }
+  if (action === 'region') { const next = value || 'all'; STATE.selectedRegion = STATE.selectedRegion === next ? 'all' : next; DOM.mapRegionFilter.value = STATE.selectedRegion; activateTab('map'); }
 }
 function setDynamicAxis(axis, value) {
   const defs = getDynamicDimensionDefinitions();
@@ -2663,7 +2409,7 @@ function exportQuickReportXlsx() {
   const summaryRows = [
     ['Relatório rápido - Torre de Controle'],
     ['Gerado em', formatDateTime(new Date())],
-    ['Unidade', sourceFilterLabel()],
+    ['Unidade', STATE.filters.source || 'Todas'],
     [],
     ['Indicador', 'Valor'],
     ['Registros', rows.length],
@@ -2721,7 +2467,7 @@ function buildReportSummaryRows(rows, selected) {
     ['Dashboard rápido - Torre de Controle'],
     ['Gerado em', formatDateTime(new Date())],
     ['Blocos selecionados', selected.join(', ') || 'Nenhum bloco selecionado'],
-    ['Unidade', sourceFilterLabel()],
+    ['Unidade', STATE.filters.source || 'Todas'],
     [],
     ['Indicador', 'Valor'],
     ['Registros', rows.length],
@@ -2797,7 +2543,7 @@ function buildReportPrintHtml() {
   const pageWidth = orientation === 'landscape' ? '277mm' : '190mm';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Torre de Controle</title><link rel="stylesheet" href="styles.css"><style>
     @page{size:A4 ${orientation};margin:8mm}*{box-sizing:border-box}html,body{background:#fff!important;color:#102033!important}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif}.print-page{width:${pageWidth};max-width:${pageWidth};margin:0 auto;transform-origin:top left}.print-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:0 0 10px;padding:10px 0;border-bottom:2px solid #dfe8f1}.print-header h1{margin:0;font-size:20px}.print-header p{margin:4px 0 0;color:#536474;font-size:11px}.report-preview,.dynamic-info-panel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}.report-block,.dynamic-info-panel,.insight,.report-bar,.dynamic-matrix-row,.dynamic-bar-item,.dynamic-ranking-row{break-inside:avoid;background:#fff!important;border:1px solid #dfe8f1!important;color:#102033!important;box-shadow:none!important}.report-block.full,.dynamic-info-panel{grid-column:1/-1}.report-block,.dynamic-info-panel{border-radius:14px!important;padding:10px!important}.mini-kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:8px!important}.report-bar,.dynamic-matrix-row,.dynamic-ranking-row{display:grid!important;grid-template-columns:minmax(80px,1fr) minmax(140px,2fr) auto!important;gap:8px!important;align-items:center!important;padding:7px!important;border-radius:10px!important}.dynamic-bar-item{display:grid!important;grid-template-columns:minmax(90px,1fr) minmax(160px,2fr)!important;gap:8px!important;padding:7px!important;border-radius:10px!important}.report-bar i,.dynamic-stack,.dynamic-bar-item i,.dynamic-ranking-row i{height:10px!important;border-radius:999px!important;background:#e8eef6!important;overflow:hidden!important}.report-bar em,.dynamic-stack span,.dynamic-bar-item em,.dynamic-ranking-row em{display:block!important;height:100%!important;background:#2a83c6}.dynamic-filter-chips,.dynamic-legend,.insight-list{display:flex!important;gap:6px!important;flex-wrap:wrap!important}.dynamic-type-buttons,.export-hint,button,.modal-close{display:none!important}.data-table{width:100%;border-collapse:collapse;font-size:9px}.data-table th,.data-table td{border:1px solid #dbe5ef;padding:4px;text-align:left}.table-wrap{max-height:none!important;overflow:visible!important}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-page{page-break-after:auto}.report-preview,.dynamic-info-panel{gap:8px!important}.panel-header{padding:0!important;margin:0 0 6px!important}}
-  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(sourceFilterLabel())} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
+  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
 }
 
 
@@ -2943,16 +2689,7 @@ function formatEntryList(entries) { return entries.map(([label, value]) => `${la
 function uniqueCount(rows, getter) { const set = new Set(); rows.forEach((row) => { const value = getter(row); if (isPresent(value)) set.add(String(value).trim()); }); return set.size; }
 function statusColorClass(label) { return STATUS_CLASS[label] || ''; }
 function emptyState(text) { return `<div class="empty-state">${escapeHtml(text)}</div>`; }
-function cleanLabel(value) { const text = cleanSpreadsheetValue(value); return text && !/^[-–—.]$/.test(text) ? text : ''; }
-function cleanSpreadsheetValue(value) { const text = String(value == null ? '' : value).replace(/\s+/g, ' ').trim(); return isSpreadsheetMissingToken(text) ? '' : text; }
-function hasUsableSpreadsheetValue(value) { return isPresent(value) && !isSpreadsheetMissingToken(value); }
-function isSpreadsheetMissingToken(value) {
-  const raw = String(value == null ? '' : value).trim();
-  if (!raw) return true;
-  if (/^#\s*(N\/A|NOME\?|NAME\?|REF!?|VALUE!?|VALOR!?|DIV\/0!?|NULL!?|NUM!?|ERRO!?|ERROR!?)$/i.test(raw)) return true;
-  const n = normalizeText(raw);
-  return /^(n a|na|nd|n d|nao disponivel|não disponivel|nao disponível|não disponível|erro|error|null|nulo|undefined|indefinido)$/.test(n);
-}
+function cleanLabel(value) { const text = String(value || '').trim(); return text && !/^[-–—.]$/.test(text) ? text : ''; }
 function simplifyDescription(text) { const clean = cleanLabel(text) || 'Sem descrição'; return truncate(clean.replace(/\s+/g, ' '), 90); }
 function firstUfForRegion(region) { return Object.keys(CONFIG.regionByUf).find((uf) => CONFIG.regionByUf[uf] === region); }
 function percent(value, total) { return total ? `${Math.round((value / total) * 100)}%` : '0%'; }
