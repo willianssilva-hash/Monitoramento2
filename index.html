@@ -55,7 +55,7 @@
         <div class="topbar-title">
           <div>
             <p class="eyebrow">Logística • Torre de Controle</p>
-            <h1>Torre de Controle - Monitoramento</h1>
+            <h1><span class="title-icon" aria-hidden="true">🚛</span><span>Torre de Controle - Monitoramento</span></h1>
             <p class="subtitle">Filial BA + Matriz SP • atualização automática a cada 15 minutos</p>
           </div>
         </div>
@@ -469,8 +469,9 @@
                 <label><input type="checkbox" class="report-option" value="returns"> Devoluções</label>
                 <label><input type="checkbox" class="report-option" value="transporters"> Transportadores</label>
                 <label><input type="checkbox" class="report-option" value="details"> Tabela detalhada</label>
+                <label><input type="checkbox" class="report-option" value="dynamic" checked> Gráfico cruzado dinâmico</label>
               </div>
-              <div class="dynamic-info-controls" aria-label="Informação Dinâmica">
+              <div class="dynamic-info-controls" id="dynamicInfoControls" aria-label="Informação Dinâmica">
                 <div>
                   <h4>Informação Dinâmica</h4>
                   <small>Selecione duas informações nos botões abaixo para montar um terceiro gráfico cruzado com insights em tempo real.</small>
@@ -497,7 +498,7 @@
             <article class="panel-card report-preview-card">
               <div class="panel-header"><div><h3>Dashboard rápido</h3><small>Prévia interativa gerada em tempo real.</small></div></div>
               <div id="reportPreview" class="report-preview"></div>
-              <div class="dynamic-info-panel">
+              <div class="dynamic-info-panel" id="dynamicInfoPanel">
                 <div class="panel-header compact"><div><h3>Gráfico cruzado dinâmico</h3><small>Confronto automático das duas informações selecionadas.</small></div></div>
                 <div id="dynamicInfoChart" class="dynamic-cross-chart"></div>
                 <div id="dynamicFilterChips" class="dynamic-filter-chips" aria-label="Filtro rápido do gráfico dinâmico"></div>

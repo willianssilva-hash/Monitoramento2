@@ -83,7 +83,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function cacheDom() {
-  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
+  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','dynamicInfoControls','dynamicInfoPanel','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
@@ -1051,8 +1051,11 @@ function renderReportBuilder() {
   const container = document.getElementById('reportPreview');
   if (!container) return;
   const selected = getSelectedReportOptions();
+  const showDynamic = selected.includes('dynamic');
   const rows = STATE.filtered;
   const metrics = computeMetrics(rows);
+  if (DOM.dynamicInfoControls) DOM.dynamicInfoControls.classList.toggle('hidden', !showDynamic);
+  if (DOM.dynamicInfoPanel) DOM.dynamicInfoPanel.classList.toggle('hidden', !showDynamic);
   const blocks = [];
   if (selected.includes('kpis')) blocks.push(`<div class="report-block"><h4>Indicadores gerais</h4><div class="mini-kpi-row"><span><b>${formatInteger(metrics.totalNotes)}</b> notas</span><span><b>${formatInteger(metrics.totalLoads)}</b> cargas</span><span><b>${formatInteger(metrics.delayed)}</b> atrasos</span><span><b>${formatInteger(metrics.inTransit)}</b> trânsito</span></div></div>`);
   if (selected.includes('performance')) blocks.push(`<div class="report-block"><h4>Performance</h4><div class="report-big-number">${metrics.ontimeRate}%</div><p>${formatInteger(metrics.performanceEligible)} notas elegíveis para ONTIME.</p></div>`);
@@ -1064,7 +1067,12 @@ function renderReportBuilder() {
   if (selected.includes('transporters')) blocks.push(reportBarBlock('Transportadores', topEntries(countBy(rows, (row) => normalizeTransporterLabel(row.transportadora)), 8)));
   if (selected.includes('details')) blocks.push(`<div class="report-block full"><h4>Detalhes</h4><div class="report-mini-table">${rows.slice(0, 12).map((row) => `<div data-open-record="${escapeHtml(row.id)}"><b>${escapeHtml(row.of || row.notaFiscal || '-')}</b><span>${escapeHtml(truncate(row.cliente || '-', 34))}</span><small>${escapeHtml(row.statusBucket)} • ${escapeHtml(row.uf || '-')}</small></div>`).join('')}</div></div>`);
   container.innerHTML = blocks.join('') || emptyState('Selecione ao menos uma informação para montar o dashboard.');
-  renderDynamicInfo(rows);
+  if (showDynamic) renderDynamicInfo(rows);
+  else {
+    if (DOM.dynamicInfoChart) DOM.dynamicInfoChart.innerHTML = '';
+    if (DOM.dynamicFilterChips) DOM.dynamicFilterChips.innerHTML = '';
+    if (DOM.dynamicInfoInsights) DOM.dynamicInfoInsights.innerHTML = '';
+  }
 }
 function getSelectedReportOptions() {
   return Array.from(document.querySelectorAll('.report-option:checked')).map((input) => input.value);
@@ -2238,8 +2246,9 @@ function showReportExportDialog() {
 function exportDynamicReport() {
   const rows = STATE.filtered;
   if (!rows.length) { addAiMessage('Não há registros nos filtros atuais para exportar.'); return; }
+  const selected = getSelectedReportOptions();
   downloadXlsx(`dashboard-rapido-${dateForFile(new Date())}.xlsx`, buildDynamicReportSheets(rows));
-  addAiMessage('Relatório dinâmico exportado em XLSX com as tabelas dos blocos selecionados e o cruzamento da Informação Dinâmica.');
+  addAiMessage(selected.includes('dynamic') ? 'Relatório dinâmico exportado em XLSX com as tabelas dos blocos selecionados e o cruzamento da Informação Dinâmica.' : 'Relatório exportado em XLSX somente com os blocos selecionados; o gráfico cruzado dinâmico ficou oculto conforme selecionado.');
 }
 function buildDynamicReportSheets(rows) {
   const selected = getSelectedReportOptions();
@@ -2253,7 +2262,7 @@ function buildDynamicReportSheets(rows) {
   if (selected.includes('occurrences')) sheets.push({ name: 'Ocorrencias', rows: [['Tipo/descrição', 'Registros'], ...topEntries(countBy(rows.filter((row) => row.hasOccurrence), occurrenceTypeLabel), 100)] });
   if (selected.includes('returns')) sheets.push({ name: 'Devolucoes', rows: [['Motivo', 'Registros'], ...topEntries(countBy(rows.filter((row) => row.hasReturn), (row) => cleanLabel(row.returnReason) || 'Sem motivo informado'), 100)] });
   if (selected.includes('transporters')) sheets.push({ name: 'Transportadores', rows: [['Transportador', 'Registros'], ...topEntries(countBy(rows, (row) => normalizeTransporterLabel(row.transportadora)), 100)] });
-  sheets.push({ name: 'Informacao Dinamica', rows: buildDynamicExportRows(rows) });
+  if (selected.includes('dynamic')) sheets.push({ name: 'Informacao Dinamica', rows: buildDynamicExportRows(rows) });
   if (selected.includes('details') || !selected.length) sheets.push({ name: 'Base', rows: buildExportRows(rows) });
   return sheets;
 }
@@ -2329,15 +2338,17 @@ function exportDynamicReportPdf() {
 }
 function buildReportPrintHtml() {
   const preview = document.getElementById('reportPreview')?.innerHTML || '';
-  const dynamic = DOM.dynamicInfoChart?.innerHTML || '';
-  const filters = DOM.dynamicFilterChips?.innerHTML || '';
-  const insights = DOM.dynamicInfoInsights?.innerHTML || '';
   const selected = getSelectedReportOptions();
+  const showDynamic = selected.includes('dynamic');
+  const dynamic = showDynamic ? (DOM.dynamicInfoChart?.innerHTML || '') : '';
+  const filters = showDynamic ? (DOM.dynamicFilterChips?.innerHTML || '') : '';
+  const insights = showDynamic ? (DOM.dynamicInfoInsights?.innerHTML || '') : '';
+  const dynamicSection = showDynamic ? `<section class="dynamic-info-panel"><h2>Informação Dinâmica</h2>${dynamic}<div class="dynamic-filter-chips">${filters}</div><div class="insight-list">${insights}</div></section>` : '';
   const orientation = selected.includes('details') || selected.length > 5 ? 'landscape' : 'portrait';
   const pageWidth = orientation === 'landscape' ? '277mm' : '190mm';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Torre de Controle</title><link rel="stylesheet" href="styles.css"><style>
     @page{size:A4 ${orientation};margin:8mm}*{box-sizing:border-box}html,body{background:#fff!important;color:#102033!important}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif}.print-page{width:${pageWidth};max-width:${pageWidth};margin:0 auto;transform-origin:top left}.print-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:0 0 10px;padding:10px 0;border-bottom:2px solid #dfe8f1}.print-header h1{margin:0;font-size:20px}.print-header p{margin:4px 0 0;color:#536474;font-size:11px}.report-preview,.dynamic-info-panel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}.report-block,.dynamic-info-panel,.insight,.report-bar,.dynamic-matrix-row,.dynamic-bar-item,.dynamic-ranking-row{break-inside:avoid;background:#fff!important;border:1px solid #dfe8f1!important;color:#102033!important;box-shadow:none!important}.report-block.full,.dynamic-info-panel{grid-column:1/-1}.report-block,.dynamic-info-panel{border-radius:14px!important;padding:10px!important}.mini-kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:8px!important}.report-bar,.dynamic-matrix-row,.dynamic-ranking-row{display:grid!important;grid-template-columns:minmax(80px,1fr) minmax(140px,2fr) auto!important;gap:8px!important;align-items:center!important;padding:7px!important;border-radius:10px!important}.dynamic-bar-item{display:grid!important;grid-template-columns:minmax(90px,1fr) minmax(160px,2fr)!important;gap:8px!important;padding:7px!important;border-radius:10px!important}.report-bar i,.dynamic-stack,.dynamic-bar-item i,.dynamic-ranking-row i{height:10px!important;border-radius:999px!important;background:#e8eef6!important;overflow:hidden!important}.report-bar em,.dynamic-stack span,.dynamic-bar-item em,.dynamic-ranking-row em{display:block!important;height:100%!important;background:#2a83c6}.dynamic-filter-chips,.dynamic-legend,.insight-list{display:flex!important;gap:6px!important;flex-wrap:wrap!important}.dynamic-type-buttons,.export-hint,button,.modal-close{display:none!important}.data-table{width:100%;border-collapse:collapse;font-size:9px}.data-table th,.data-table td{border:1px solid #dbe5ef;padding:4px;text-align:left}.table-wrap{max-height:none!important;overflow:visible!important}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-page{page-break-after:auto}.report-preview,.dynamic-info-panel{gap:8px!important}.panel-header{padding:0!important;margin:0 0 6px!important}}
-  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section><section class="dynamic-info-panel"><h2>Informação Dinâmica</h2>${dynamic}<div class="dynamic-filter-chips">${filters}</div><div class="insight-list">${insights}</div></section></main></body></html>`;
+  </style></head><body><main class="print-page"><header class="print-header"><div><h1>🚛 Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
 }
 
 

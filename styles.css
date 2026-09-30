@@ -1068,7 +1068,7 @@ h1 {
   padding-left: 100%;
   color: #d7eaff;
   white-space: nowrap;
-  animation: ticker 45s linear infinite;
+  animation: ticker 75s linear infinite;
 }
 
 .ticker-track span::before {
@@ -5983,5 +5983,68 @@ body[data-theme="dark"] .data-table tbody tr:hover td {
   }
   .dynamic-cross-chip span {
     max-width: 150px;
+  }
+}
+
+/* Ícone do título principal e controle do gráfico dinâmico no relatório */
+.topbar-title h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.title-icon {
+  position: relative;
+  display: inline-grid;
+  width: clamp(34px, 4vw, 48px);
+  height: clamp(34px, 4vw, 48px);
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 72% 24%, rgba(47, 191, 113, .45), transparent 28%),
+    linear-gradient(135deg, color-mix(in srgb, var(--blue) 82%, #ffffff), color-mix(in srgb, var(--green) 72%, #0b2440));
+  box-shadow: 0 14px 32px rgba(19, 152, 214, .24), inset 0 0 0 1px rgba(255,255,255,.28);
+  font-size: clamp(19px, 2.4vw, 27px);
+  line-height: 1;
+}
+.title-icon::before,
+.title-icon::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 1px solid color-mix(in srgb, var(--blue-2) 45%, transparent);
+  border-radius: 20px;
+  opacity: .58;
+  animation: titleRadarPulse 2.8s ease-out infinite;
+}
+.title-icon::after {
+  inset: -13px;
+  opacity: .26;
+  animation-delay: .9s;
+}
+@keyframes titleRadarPulse {
+  0% { transform: scale(.78); opacity: .55; }
+  80%, 100% { transform: scale(1.08); opacity: 0; }
+}
+body[data-theme="dark"] .title-icon {
+  box-shadow: 0 14px 34px rgba(51, 193, 255, .18), inset 0 0 0 1px rgba(255,255,255,.22);
+}
+.report-option-list label:has(input[value="dynamic"]) {
+  border-color: color-mix(in srgb, var(--blue) 26%, transparent);
+  background: color-mix(in srgb, var(--blue) 8%, #ffffff);
+}
+body[data-theme="dark"] .report-option-list label:has(input[value="dynamic"]) {
+  background: rgba(19, 152, 214, .12) !important;
+  border-color: rgba(51, 193, 255, .24) !important;
+}
+@media (max-width: 760px) {
+  .topbar-title h1 {
+    gap: 8px;
+  }
+  .title-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 12px;
+    font-size: 18px;
   }
 }
