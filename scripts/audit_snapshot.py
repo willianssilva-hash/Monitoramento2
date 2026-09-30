@@ -144,6 +144,10 @@ def audit() -> int:
         }
         summary["sources"].append(item)
         print(f"{short}: {len(records)} linhas brutas, {len(fields)} campos, {len(usable_rows)} úteis, {len(retira_rows)} retira excluíveis, {len(missing_docs)} sem OF/NF válido")
+        if len(fields) < MIN_FIELD_COUNT or missing_required or len(present_rich) < 3:
+            preview_fields = ', '.join(fields[:45])
+            warning_preview = ' | '.join(str(item) for item in (source.get('warnings') or [])[-8:])
+            print(f"::notice title=Auditoria {short}::campos={preview_fields}; avisos={warning_preview}")
 
         if len(records) < MIN_USABLE_ROWS:
             errors.append(f"{short}: menos de {MIN_USABLE_ROWS} linhas brutas no snapshot")

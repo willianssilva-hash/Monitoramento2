@@ -77,8 +77,8 @@ def header_score(row: Iterable[str]) -> int:
     return sum(1 for cell in row if is_known_header(cell))
 
 
-def fetch_text(url: str, attempts: int = 3) -> str:
-    raw, charset = fetch_bytes(url, attempts=attempts, timeout=60, accept="text/html,text/csv,text/plain,*/*")
+def fetch_text(url: str, attempts: int = 3, timeout: int = 60) -> str:
+    raw, charset = fetch_bytes(url, attempts=attempts, timeout=timeout, accept="text/html,text/csv,text/plain,*/*")
     text = raw.decode(charset or "utf-8", errors="replace")
     if "Sorry, the file you have requested does not exist" in text:
         raise RuntimeError("arquivo não encontrado pelo Google")
@@ -419,11 +419,12 @@ def parse_xlsx_workbook(blob: bytes, source: dict) -> list[tuple[str, list[dict]
 
 
 def discover_gids(pubhtml: str, base_pub: str) -> tuple[list[str], set[str]]:
+    decoded = urllib.parse.unquote(pubhtml or '').replace('\\x3d', '=').replace('\\u003d', '=')
     gids: list[str] = []
     target_gids: set[str] = set()
-    for match in re.finditer(r"gid=(\d+)", pubhtml):
+    for match in re.finditer(r"gid\s*=\s*(\d+)", decoded):
         gid = match.group(1)
-        window = pubhtml[max(0, match.start() - 700) : match.end() + 700]
+        window = decoded[max(0, match.start() - 1200) : match.end() + 1200]
         is_target = "acompanh" in norm(window)
         if is_target:
             target_gids.add(gid)
@@ -471,12 +472,12 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     pubhtml_text = ""
     seen_urls: set[str] = set()
 
-    def collect_csv_candidate(url: str, target_priority: int, origin_label: str) -> None:
+    def collect_csv_candidate(url: str, target_priority: int, origin_label: str, attempts: int = 3, timeout: int = 60) -> None:
         if url in seen_urls:
             return
         seen_urls.add(url)
         try:
-            rows = parse_csv_rows(fetch_text(url))
+            rows = parse_csv_rows(fetch_text(url, attempts=attempts, timeout=timeout))
             records = rows_to_records(rows, source)
             if records:
                 fields = list(records[0].keys())
@@ -490,7 +491,7 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     # gid e costuma retornar exatamente a aba acompanhamento como CSV.
     for sheet_name in ("acompanhamento", "Acompanhamento", "ACOMPANHAMENTO"):
         params = urllib.parse.urlencode({"tqx": "out:csv", "sheet": sheet_name})
-        collect_csv_candidate(f"{base}/gviz/tq?{params}", 2, f"gviz:{sheet_name}")
+        collect_csv_candidate(f"{base}/gviz/tq?{params}", 2, f"gviz:{sheet_name}", attempts=1, timeout=45)
         if has_rich_candidate(candidates_found):
             break
 
@@ -518,7 +519,8 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
 
         for url, gid in csv_candidates:
             target_priority = 1 if gid in target_gids else 0
-            collect_csv_candidate(url, target_priority, f"csv:{url}")
+            long_target = gid == '0' or target_priority > 0
+            collect_csv_candidate(url, target_priority, f"csv:{url}", attempts=1 if long_target else 2, timeout=180 if long_target else 60)
     else:
         errors.append("pubhtml/gid ignorado: gviz da aba acompanhamento já trouxe base rica")
 
