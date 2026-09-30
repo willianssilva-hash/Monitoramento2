@@ -4,8 +4,8 @@ const CONFIG = {
   refreshIntervalMs: 15 * 60 * 1000,
   sheetAttempts: ['acompanhamento', 'Acompanhamento', ''], // tenta a aba solicitada e, como fallback, a primeira aba publicada
   sources: [
-    { key: 'filial-ba', name: 'Monitoramento Filial BA', short: 'Filial BA', color: '#1398d6', pubId: '2PACX-1vSi7hRouHidVGdRosoQx4RqpQw-iLKCiYpjMyIeSGXm_o3QxFeiw_11i0d7OcTfTtdXDydOFwIhqnCr', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSi7hRouHidVGdRosoQx4RqpQw-iLKCiYpjMyIeSGXm_o3QxFeiw_11i0d7OcTfTtdXDydOFwIhqnCr/pubhtml' },
-    { key: 'matriz-sp', name: 'Monitoramento Matriz SP', short: 'Matriz SP', color: '#2fbf71', pubId: '2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0/pubhtml' }
+    { key: 'filial-ba', name: 'Monitoramento Filial BA', short: 'Filial BA', color: '#1398d6', pubId: '2PACX-1vSi7hRouHidVGdRosoQx4RqpQw-iLKCiYpjMyIeSGXm_o3QxFeiw_11i0d7OcTfTtdXDydOFwIhqnCr', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSi7hRouHidVGdRosoQx4RqpQw-iLKCiYpjMyIeSGXm_o3QxFeiw_11i0d7OcTfTtdXDydOFwIhqnCr/pubhtml', liveGids: ['0'], fallbackGids: ['1866122843', '820345103', '771091198'], minLiveFields: 30, minLiveRows: 1000 },
+    { key: 'matriz-sp', name: 'Monitoramento Matriz SP', short: 'Matriz SP', color: '#2fbf71', pubId: '2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZz2TV4MFUPBCfNS5MHbhDPSur0VTqxekjkmVCalp0V0hMLAaZvhCbrYqowUzfuftrpY7AlUGeWDR0/pubhtml', liveGids: ['1090815394'], fallbackGids: ['1400737164', '1118798860'], minLiveFields: 30, minLiveRows: 1000 }
   ],
   aliases: {
     mes: ['Mês', 'Mes', 'Mês Referência', 'Mes Referencia'],
@@ -227,6 +227,7 @@ async function loadData({ manual = false } = {}) {
       catch (error) { return { source, records: [], error }; }
     }));
     if (seq !== loadSequence) return;
+    const refreshOrigins = sourceResults.map((item) => item.records && item.records.__liveOrigin ? `${item.source.short}: ${item.records.__liveOrigin}` : '').filter(Boolean);
     let records = sourceResults.flatMap((item) => item.records);
     STATE.errors = [
       ...sourceResults.filter((item) => item.error).map((item) => `${item.source.short}: ${item.error.message || item.error}`),
@@ -244,7 +245,7 @@ async function loadData({ manual = false } = {}) {
     populateDynamicFilters(); applyFiltersAndRender(); fetchWeather();
     if (STATE.errors.length) { setLoadStatus(STATE.isDemo ? 'error' : 'ok', STATE.isDemo ? 'Modo demonstrativo' : 'Atualizado com alertas'); showBanner(STATE.errors.join(' • '), STATE.isDemo ? 'error' : 'warn'); }
     else setLoadStatus('ok', 'Dados atualizados');
-    if (manual) addAiMessage(`Atualização concluída às ${formatTime(STATE.lastUpdated)}. ${formatInteger(STATE.records.length)} registros carregados${STATE.isDemo ? ' em modo demonstrativo' : ''}.`);
+    if (manual) addAiMessage(`Atualização concluída às ${formatTime(STATE.lastUpdated)}. ${formatInteger(STATE.records.length)} registros carregados${STATE.isDemo ? ' em modo demonstrativo' : ''}.${refreshOrigins.length ? ` Origem ao vivo: ${refreshOrigins.join(' | ')}.` : ''}`);
   } catch (error) {
     STATE.isLoading = false;
     STATE.errors = [error.message || String(error)];
@@ -339,7 +340,15 @@ async function fetchPublishedData(source) {
   const errors = [];
 
   try {
-    const pubhtml = await fetchTextSmart(source.url);
+    const configuredRecords = await fetchConfiguredLiveCsv(source, base, errors);
+    if (configuredRecords.length) return configuredRecords;
+    errors.push('CSV ao vivo configurado sem linhas úteis');
+  } catch (error) {
+    errors.push(`CSV ao vivo configurado: ${error.message || String(error)}`);
+  }
+
+  try {
+    const pubhtml = await fetchTextSmart(source.url, { directTimeoutMs: 12000, proxyTimeoutMs: 30000 });
     const records = await fetchBestPublishedSheet(source, base, pubhtml, errors);
     if (records.length) return records;
     errors.push('nenhum candidato publicado com linhas úteis');
@@ -353,15 +362,45 @@ async function fetchPublishedData(source) {
   ];
   for (const candidate of candidates) {
     try {
-      const text = await fetchTextSmart(candidate.url);
+      const text = await fetchTextSmart(candidate.url, { directTimeoutMs: 12000, proxyTimeoutMs: 30000 });
       const records = candidate.type === 'csv' ? parseCsvRecords(text, source) : parseHtmlRecords(text, source);
-      if (records.length) return records;
-      errors.push(`${candidate.type} sem linhas`);
+      if (isUsablePublishedRecords(records, source)) return records;
+      if (records.length) errors.push(`${candidate.type} retornou ${records.length} linhas, mas não a base completa`);
+      else errors.push(`${candidate.type} sem linhas`);
     } catch (error) {
       errors.push(`${candidate.type}: ${error.message || String(error)}`);
     }
   }
-  throw new Error(errors.filter(Boolean).slice(-6).join(' | ') || 'falha ao ler publicação');
+  throw new Error(errors.filter(Boolean).slice(-8).join(' | ') || 'falha ao ler publicação');
+}
+
+async function fetchConfiguredLiveCsv(source, base, errors = []) {
+  const gids = [...new Set([...(source.liveGids || []), ...(source.fallbackGids || [])].filter(Boolean))];
+  const candidates = [];
+  for (const gid of gids) {
+    const url = `${base}/pub?gid=${gid}&single=true&output=csv`;
+    try {
+      const text = await fetchTextSmart(url, { directTimeoutMs: 18000, proxyTimeoutMs: 60000 });
+      const records = parseCsvRecords(text, source);
+      if (isUsablePublishedRecords(records, source)) {
+        markLiveRecords(records, `ao vivo gid ${gid}`);
+        return records;
+      }
+      if (records.length) {
+        candidates.push({ score: publishedCandidateScore(records), records, origin: `gid ${gid}` });
+        errors.push(`gid ${gid} retornou ${records.length} linhas / ${publishedCandidateFieldCount(records)} campos, abaixo da base esperada`);
+      } else errors.push(`gid ${gid} sem dados`);
+    } catch (error) {
+      errors.push(`gid ${gid}: ${error.message || String(error)}`);
+    }
+  }
+  candidates.sort((a, b) => compareScores(b.score, a.score));
+  const best = candidates[0];
+  if (best && source.minLiveFields == null && source.minLiveRows == null) {
+    markLiveRecords(best.records, `ao vivo ${best.origin}`);
+    return best.records;
+  }
+  return [];
 }
 
 async function fetchBestPublishedSheet(source, base, pubhtml, errors = []) {
@@ -374,10 +413,11 @@ async function fetchBestPublishedSheet(source, base, pubhtml, errors = []) {
       if (seen.has(url)) continue;
       seen.add(url);
       try {
-        const records = parseCsvRecords(await fetchTextSmart(url), source);
+        const records = parseCsvRecords(await fetchTextSmart(url, { directTimeoutMs: 15000, proxyTimeoutMs: 45000 }), source);
         if (records.length) {
           const score = [(targetGids.has(gid)) ? 1 : 0, ...publishedCandidateScore(records)];
           candidates.push({ score, records, origin: `csv gid ${gid}` });
+          if (!isUsablePublishedRecords(records, source)) errors.push(`csv gid ${gid} retornou ${records.length} linhas / ${publishedCandidateFieldCount(records)} campos, abaixo da base esperada`);
         } else errors.push(`csv gid ${gid} sem dados`);
       } catch (error) {
         errors.push(`csv gid ${gid}: ${error.message || String(error)}`);
@@ -387,13 +427,20 @@ async function fetchBestPublishedSheet(source, base, pubhtml, errors = []) {
   };
   const selectBestCandidate = (candidates) => {
     candidates.sort((a, b) => compareScores(b.score, a.score));
-    const selected = candidates[0];
-    if (selected) errors.push(`selecionado ${selected.origin}: ${selected.records.length} linhas`);
+    const selected = candidates.find((candidate) => isUsablePublishedRecords(candidate.records, source))
+      || ((source.minLiveFields == null && source.minLiveRows == null) ? candidates[0] : null);
+    if (selected) {
+      markLiveRecords(selected.records, selected.origin);
+      errors.push(`selecionado ${selected.origin}: ${selected.records.length} linhas`);
+    }
     return selected ? selected.records : [];
   };
 
   const targetCandidates = targetGids.size ? await collectCsvCandidates(ordered.filter((gid) => targetGids.has(gid))) : [];
-  if (targetCandidates.length) return selectBestCandidate(targetCandidates);
+  if (targetCandidates.length) {
+    const selectedTarget = selectBestCandidate(targetCandidates);
+    if (selectedTarget.length) return selectedTarget;
+  }
 
   const fallbackGids = targetGids.size ? ordered.filter((gid) => !targetGids.has(gid)).slice(0, 4) : ordered.slice(0, 4);
   if (!fallbackGids.includes('0')) fallbackGids.push('0');
@@ -402,9 +449,11 @@ async function fetchBestPublishedSheet(source, base, pubhtml, errors = []) {
   if (!seen.has(defaultCsvUrl)) {
     seen.add(defaultCsvUrl);
     try {
-      const records = parseCsvRecords(await fetchTextSmart(defaultCsvUrl), source);
-      if (records.length) candidates.push({ score: [0, ...publishedCandidateScore(records)], records, origin: 'csv padrão' });
-      else errors.push('csv padrão sem dados');
+      const records = parseCsvRecords(await fetchTextSmart(defaultCsvUrl, { directTimeoutMs: 15000, proxyTimeoutMs: 45000 }), source);
+      if (records.length) {
+        candidates.push({ score: [0, ...publishedCandidateScore(records)], records, origin: 'csv padrão' });
+        if (!isUsablePublishedRecords(records, source)) errors.push(`csv padrão retornou ${records.length} linhas / ${publishedCandidateFieldCount(records)} campos, abaixo da base esperada`);
+      } else errors.push('csv padrão sem dados');
     } catch (error) {
       errors.push(`csv padrão: ${error.message || String(error)}`);
     }
@@ -412,8 +461,10 @@ async function fetchBestPublishedSheet(source, base, pubhtml, errors = []) {
 
   try {
     const htmlRecords = parseHtmlRecords(pubhtml, source);
-    if (htmlRecords.length) candidates.push({ score: [0, ...publishedCandidateScore(htmlRecords)], records: htmlRecords, origin: 'html publicado' });
-    else errors.push('html publicado sem tabela útil');
+    if (htmlRecords.length) {
+      candidates.push({ score: [0, ...publishedCandidateScore(htmlRecords)], records: htmlRecords, origin: 'html publicado' });
+      if (!isUsablePublishedRecords(htmlRecords, source)) errors.push(`html publicado retornou ${htmlRecords.length} linhas / ${publishedCandidateFieldCount(htmlRecords)} campos, abaixo da base esperada`);
+    } else errors.push('html publicado sem tabela útil');
   } catch (error) {
     errors.push(`html publicado: ${error.message || String(error)}`);
   }
@@ -442,6 +493,31 @@ function publishedCandidateScore(records) {
   const known = fields.reduce((score, field) => score + (isKnownHeader(field) ? 1 : 0), 0);
   return [fields.length, known, Math.min(records.length, 20000), records.length];
 }
+function publishedCandidateFieldCount(records) { return records && records[0] ? Object.keys(records[0]).filter((key) => !key.startsWith('__')).length : 0; }
+function isUsablePublishedRecords(records, source) {
+  if (!Array.isArray(records) || !records.length) return false;
+  const fieldCount = publishedCandidateFieldCount(records);
+  const minFields = source.minLiveFields || 0;
+  const minRows = source.minLiveRows || 0;
+  if (fieldCount < minFields || records.length < minRows) return false;
+  const fields = Object.keys(records[0] || {}).filter((key) => !key.startsWith('__')).map(normalizeText);
+  const requiredGroups = [
+    ['of', 'ordem de frete', 'carga'],
+    ['nf', 'nota fiscal'],
+    ['status', 'situacao'],
+    ['cliente', 'destinatario'],
+    ['uf', 'estado'],
+    ['previsao de entrega', 'previsao deentrega']
+  ];
+  const matched = requiredGroups.filter((group) => fields.some((field) => group.some((needle) => field === normalizeText(needle) || field.includes(normalizeText(needle))))).length;
+  return matched >= 5;
+}
+function markLiveRecords(records, origin) {
+  if (!Array.isArray(records)) return records;
+  try { Object.defineProperty(records, '__liveOrigin', { value: origin, enumerable: false }); }
+  catch (_) { records.__liveOrigin = origin; }
+  return records;
+}
 
 function compareScores(a, b) {
   const max = Math.max(a.length, b.length);
@@ -452,24 +528,27 @@ function compareScores(a, b) {
   return 0;
 }
 
-async function fetchTextSmart(url) {
+async function fetchTextSmart(url, options = {}) {
   const freshUrl = appendCacheBuster(url);
-  const urls = [
-    freshUrl,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(freshUrl)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(freshUrl)}`
-  ];
+  const targets = buildLiveFetchTargets(freshUrl);
+  const directTimeoutMs = options.directTimeoutMs || 12000;
+  const proxyTimeoutMs = options.proxyTimeoutMs || 30000;
   let lastError = null;
-  for (const target of urls) {
+  for (const target of targets) {
     let timer = null;
     try {
       const controller = new AbortController();
-      timer = window.setTimeout(() => controller.abort(), target === url ? 6000 : 9000);
-      const response = await fetch(target, { cache: 'no-store', signal: controller.signal });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-      if (!text || text.length < 20) throw new Error('resposta vazia');
-      if (/Sorry, the file you have requested does not exist/i.test(text)) throw new Error('arquivo não encontrado');
+      timer = window.setTimeout(() => controller.abort(), target.direct ? directTimeoutMs : proxyTimeoutMs);
+      const response = await fetch(target.url, { cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error(`${target.label}: HTTP ${response.status}`);
+      let text = await response.text();
+      if (target.kind === 'allorigins-json') {
+        const parsed = JSON.parse(text);
+        text = parsed.contents || '';
+      }
+      if (!text || text.length < 20) throw new Error(`${target.label}: resposta vazia`);
+      if (/Sorry, the file you have requested does not exist/i.test(text)) throw new Error(`${target.label}: arquivo não encontrado`);
+      if (/Sorry, unable to open the file at this time/i.test(text)) throw new Error(`${target.label}: Google não abriu o arquivo`);
       return text;
     } catch (error) {
       lastError = error;
@@ -478,6 +557,18 @@ async function fetchTextSmart(url) {
     }
   }
   throw lastError || new Error('falha de rede');
+}
+function buildLiveFetchTargets(url) {
+  const encoded = encodeURIComponent(url);
+  return [
+    { label: 'direto', url, direct: true },
+    { label: 'allorigins raw', url: `https://api.allorigins.win/raw?url=${encoded}` },
+    { label: 'allorigins json', url: `https://api.allorigins.win/get?url=${encoded}`, kind: 'allorigins-json' },
+    { label: 'codetabs', url: `https://api.codetabs.com/v1/proxy?quest=${encoded}` },
+    { label: 'corsproxy.io', url: `https://corsproxy.io/?${encoded}` },
+    { label: 'isomorphic-git', url: `https://cors.isomorphic-git.org/${url}` },
+    { label: 'thingproxy', url: `https://thingproxy.freeboard.io/fetch/${url}` }
+  ];
 }
 function appendCacheBuster(url) {
   const separator = String(url || '').includes('?') ? '&' : '?';
