@@ -107,6 +107,39 @@ def fetch_bytes(url: str, attempts: int = 3, timeout: int = 60, accept: str = "*
     raise RuntimeError(str(last_error) if last_error else "falha desconhecida")
 
 
+def fetch_text_limited(url: str, limit: int = 900_000, attempts: int = 3, timeout: int = 45) -> str:
+    """Lê só o início do pubhtml para descobrir gids sem baixar a tabela inteira."""
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; TorreControle/1.0)",
+                    "Accept": "text/html,*/*",
+                },
+            )
+            chunks: list[bytes] = []
+            remaining = limit
+            charset = "utf-8"
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                charset = response.headers.get_content_charset() or "utf-8"
+                while remaining > 0:
+                    chunk = response.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+            raw = b"".join(chunks)
+            if not raw:
+                raise RuntimeError("resposta vazia")
+            return raw.decode(charset, errors="replace")
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            time.sleep(attempt * 1.5)
+    raise RuntimeError(str(last_error) if last_error else "falha desconhecida")
+
+
 def sniff_dialect(text: str) -> csv.Dialect:
     sample = text[:8192]
     try:
@@ -411,49 +444,48 @@ def candidate_score(records: list[dict], fields: list[str]) -> tuple[int, int, i
     return (len(visible_fields), known, min(len(records), 20000), len(records))
 
 
+def has_rich_candidate(candidates: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]]) -> bool:
+    return any(len([field for field in fields if not str(field).startswith("__")]) >= 20 for _, _, _, fields in candidates)
+
+
+def add_candidate(
+    candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]],
+    errors: list[str],
+    target_priority: int,
+    origin: str,
+    records: list[dict],
+    fields: list[str],
+) -> None:
+    if not records:
+        return
+    base_score = candidate_score(records, fields)
+    score = (target_priority, *base_score)
+    candidates_found.append((score, origin, records, fields))
+    errors.append(f"candidato {origin}: {len(records)} linhas / {len(fields)} campos / score {score}")
+
+
 def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     errors: list[str] = []
     candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]] = []
     base = f"https://docs.google.com/spreadsheets/d/e/{source['pubId']}"
     pubhtml_text = ""
 
-    # Primeiro tenta o XLSX completo publicado. Ele traz os nomes das abas e evita
-    # cair no CSV padrão da primeira aba (ex.: Prog Emb), que omite NF, status,
-    # ONTIME, ocorrências e devoluções da aba acompanhamento.
     try:
-        blob, _ = fetch_bytes(f"{base}/pub?output=xlsx", attempts=3, timeout=120, accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*")
-        workbook_candidates = parse_xlsx_workbook(blob, source)
-        if workbook_candidates:
-            sheet_names = ", ".join(name for name, _, _ in workbook_candidates[:12])
-            errors.append(f"xlsx abas úteis: {sheet_names}")
-        for sheet_name, records, fields in workbook_candidates:
-            sheet_norm = norm(sheet_name)
-            target_priority = 2 if sheet_norm == "acompanhamento" else 1 if "acompanh" in sheet_norm else 0
-            if target_priority <= 0:
-                continue
-            base_score = candidate_score(records, fields)
-            score = (target_priority, *base_score)
-            candidates_found.append((score, f"xlsx:{sheet_name}", records, fields))
-            errors.append(f"candidato xlsx {sheet_name}: {len(records)} linhas / {len(fields)} campos / score {score}")
-        if not any(origin.startswith("xlsx:") for _, origin, _, _ in candidates_found):
-            errors.append("xlsx sem aba acompanhamento útil")
+        # O pubhtml completo pode ser grande e travar; o cabeçalho já contém os
+        # links/gids das abas publicadas. Ler apenas o início evita cair no CSV
+        # padrão da primeira aba e permite buscar a aba acompanhamento correta.
+        pubhtml_text = fetch_text_limited(source["url"])
+        errors.append(f"pubhtml parcial: {len(pubhtml_text)} caracteres lidos para descoberta de gids")
     except Exception as exc:  # noqa: BLE001
-        errors.append(f"xlsx: {exc}")
-
-    try:
-        pubhtml_text = fetch_text(source["url"])
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"pubhtml: {exc}")
+        errors.append(f"pubhtml parcial: {exc}")
 
     gids, target_gids = discover_gids(pubhtml_text, base) if pubhtml_text else (["0"], set())
     if target_gids:
-        # Para desempenho, quando a publicação informa a aba acompanhamento,
-        # tentamos somente seus gids e o CSV padrão. Isso evita varrer abas de
-        # apoio enormes e mantém o deploy dentro de poucos minutos.
         gids_to_try = [gid for gid in gids if gid in target_gids]
         errors.append(f"gids candidatos da aba acompanhamento: {','.join(sorted(target_gids))}")
     else:
-        gids_to_try = gids[:4]
+        gids_to_try = gids[:8]
+        errors.append("pubhtml parcial não informou gid da aba acompanhamento; tentando primeiros gids e CSV padrão")
     if "0" not in gids_to_try:
         gids_to_try.append("0")
     csv_candidates = [(f"{base}/pub?gid={gid}&single=true&output=csv", gid) for gid in gids_to_try]
@@ -469,28 +501,51 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
             records = rows_to_records(rows, source)
             if records:
                 fields = list(records[0].keys())
-                base_score = candidate_score(records, fields)
                 target_priority = 1 if gid in target_gids else 0
-                score = (target_priority, *base_score)
-                candidates_found.append((score, f"csv:{url}", records, fields))
-                errors.append(f"candidato {url}: {len(records)} linhas / {len(fields)} campos / score {score}")
+                add_candidate(candidates_found, errors, target_priority, f"csv:{url}", records, fields)
             else:
                 errors.append(f"csv sem dados: {url}")
         except Exception as exc:  # noqa: BLE001
             errors.append(f"csv {url}: {exc}")
 
-    if pubhtml_text:
+    # Só tenta XLSX quando os CSVs não trouxeram uma base rica. O XLSX completo é
+    # mais pesado, mas serve como salvaguarda quando o Google não expõe os gids.
+    if not has_rich_candidate(candidates_found):
+        try:
+            blob, _ = fetch_bytes(
+                f"{base}/pub?output=xlsx",
+                attempts=1,
+                timeout=90,
+                accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*",
+            )
+            workbook_candidates = parse_xlsx_workbook(blob, source)
+            if workbook_candidates:
+                sheet_names = ", ".join(name for name, _, _ in workbook_candidates[:12])
+                errors.append(f"xlsx abas úteis: {sheet_names}")
+            for sheet_name, records, fields in workbook_candidates:
+                sheet_norm = norm(sheet_name)
+                target_priority = 2 if sheet_norm == "acompanhamento" else 1 if "acompanh" in sheet_norm else 0
+                if target_priority <= 0:
+                    continue
+                add_candidate(candidates_found, errors, target_priority, f"xlsx:{sheet_name}", records, fields)
+            if not any(origin.startswith("xlsx:") for _, origin, _, _ in candidates_found):
+                errors.append("xlsx sem aba acompanhamento útil")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"xlsx: {exc}")
+    else:
+        errors.append("xlsx ignorado: CSV da aba acompanhamento já trouxe base rica")
+
+    # Como último fallback, se o pubhtml parcial veio completo o suficiente para
+    # conter tabelas úteis, também avaliamos seus dados renderizados.
+    if pubhtml_text and not has_rich_candidate(candidates_found):
         try:
             for index, table in enumerate(parse_html_tables(pubhtml_text), start=1):
                 records = rows_to_records(table, source)
                 if records:
                     fields = list(records[0].keys())
-                    base_score = candidate_score(records, fields)
-                    score = (0, *base_score)
-                    candidates_found.append((score, f"html:table-{index}", records, fields))
-                    errors.append(f"candidato html table-{index}: {len(records)} linhas / {len(fields)} campos / score {score}")
+                    add_candidate(candidates_found, errors, 0, f"html:table-{index}", records, fields)
             if not any(origin.startswith("html:") for _, origin, _, _ in candidates_found):
-                errors.append("html sem tabela útil")
+                errors.append("html parcial sem tabela útil")
         except Exception as exc:  # noqa: BLE001
             errors.append(f"html parse: {exc}")
 
