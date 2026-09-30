@@ -26,17 +26,17 @@ const CONFIG = {
     notaFiscal: ['NF', 'Nota Fiscal', 'NOTA FISCAL', 'Nº NF', 'N NF', 'Nota', 'Notas', 'NFe', 'NFe/CTe'],
     motorista: ['Motorista', 'Nome Motorista', 'Condutor', 'Driver'],
     transportadora: ['Transportadora', 'Transportador', 'Transp', 'Parceiro', 'Operador'],
-    status: ['Status', 'Situação', 'Situacao', 'Status Entrega', 'Status da Entrega', 'Acompanhamento', 'Ocorrência Status', 'Status Viagem'],
+    status: ['Status', 'Situação', 'Situacao', 'Status Entrega', 'Status da Entrega', 'Status Base', 'Status Atual', 'Acompanhamento', 'Ocorrência Status', 'Status Viagem', 'Status Aplicativo', 'PROCV STATUS TRANSPORTE+'],
     previsaoEntrega: ['Previsão de Entrega', 'Previsao de Entrega', 'Previsão deEntrega', 'Previsao deEntrega', 'Prev Entrega', 'Prev. Entrega', 'Data Prevista Entrega', 'Previsão', 'Previsao'],
     chegadaCliente: ['Chegada no cliente', 'Chegada Cliente', 'Data Chegada Cliente', 'Chegada', 'Data Entrega', 'Entrega Realizada'],
     ontime: ['ONTIME', 'On Time', 'On-time', 'No Prazo', 'Dentro do Prazo', 'OTD'],
     ocorrencia: ['Ocorrência', 'Ocorrencia', 'Descrição da Ocorrência', 'Descricao da Ocorrencia', 'Descrição Ocorrência', 'Descricao Ocorrencia', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
-    tipoOcorrencia: ['Tipo de Ocorrência', 'Tipo Ocorrência', 'TipoOcorrência', 'Tipo de Ocorrencia', 'Tipo Ocorrencia', 'TipoOcorrencia'],
-    descricaoOcorrencia: ['Descrição da Ocorrência', 'Descricao da Ocorrencia', 'Descrição Ocorrência', 'Descricao Ocorrencia', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
+    tipoOcorrencia: ['Tipo de Ocorrência', 'Tipo Ocorrência', 'TipoOcorrência', 'Tipo de Ocorrencia', 'Tipo Ocorrencia', 'TipoOcorrencia', 'Categoria Ocorrência', 'Categoria da Ocorrência', 'Classificação Ocorrência', 'Classificacao Ocorrencia', 'Ocorrência Transporte', 'Ocorrência de Transporte', 'Ocorrencia Transporte', 'Ocorrencia de Transporte', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
+    descricaoOcorrencia: ['Descrição da Ocorrência', 'Descricao da Ocorrencia', 'Descrição Ocorrência', 'Descricao Ocorrencia', 'Descrição da ocorrência', 'Descricao da ocorrencia', 'Observação Ocorrência', 'Observacao Ocorrencia', 'Detalhe Ocorrência', 'Detalhe Ocorrencia', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
     setor: ['Setor Responsável', 'Setor Responsavel', 'SetorResponsável', 'SetorResponsavel', 'Setor', 'Responsável', 'Responsavel', 'Área Responsável', 'Area Responsavel'],
     devolucao: ['Devolução', 'Devolucao', 'Dev', 'Retorno', 'Logística Reversa', 'Logistica Reversa'],
     tipoDevolucao: ['Tipo Devolução', 'Tipo de Devolução', 'TipoDevolução', 'TipoDevolucao', 'Tipo Devolucao', 'Tipo de Devolucao', 'Parcial/Total', 'Devolução Parcial Total'],
-    motivoDevolucao: ['Motivo Devolução', 'Motivo da Devolução', 'MotivoDevolução', 'MotivoDevolucao', 'Motivo Devolucao', 'Motivo da Devolucao', 'Motivo Dev', 'Descrição Motivo Devolução', 'Descricao Motivo Devolucao'],
+    motivoDevolucao: ['Motivo Devolução', 'Motivo da Devolução', 'MotivoDevolução', 'MotivoDevolucao', 'Motivo Devolucao', 'Motivo da Devolucao', 'Motivo Dev', 'Motivo de Dev', 'Razão Devolução', 'Razao Devolucao', 'Causa Devolução', 'Causa Devolucao', 'Justificativa Devolução', 'Justificativa Devolucao', 'Descrição Motivo Devolução', 'Descricao Motivo Devolucao', 'Descrição Devolução', 'Descricao Devolucao', 'Observação Devolução', 'Observacao Devolucao'],
     observacao: ['Observação', 'Observacoes', 'Observações', 'Observacao', 'OBSERVAÇÃO 1', 'Observação 1', 'Obs', 'OBS', 'Comentários', 'Comentarios'],
     valor: ['Valor', 'Valor NF', 'Valor Nf', 'Valor Total NF', 'Valor Nota', 'R$'],
     peso: ['Peso', 'Peso Bruto', 'Cubagem']
@@ -71,7 +71,7 @@ let countdownTimer = null;
 let tooltipFrame = null;
 let tooltipTarget = null;
 let tooltipEvent = null;
-const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard. descarga': 'warn', 'Em trânsito': 'info', 'Em aberto': 'purple', Faturado: 'purple' };
+const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard. descarga': 'warn', 'Ag Descarga': 'warn', 'Em trânsito': 'info', 'Em transito no prazo': 'info', 'Em transito fora do prazo': 'danger', 'Em doca': 'purple', Descarregando: 'warn', Devolvido: 'purple', 'Aguardando liberação': 'warn', 'Em aberto': 'purple', Faturado: 'purple' };
 
 window.addEventListener('DOMContentLoaded', () => {
   cacheDom(); initTheme(); initPalette(); initCompactMode(); loadMonitorMemory(); bindEvents(); installGvizFallback(); populateSourceFilter();
@@ -480,6 +480,7 @@ function normalizeRecord(record, index) {
   row.dataProgramadaDate = parseDate(row.dataProgramada); row.agendaDate = parseDate(row.agenda); row.previsaoEntregaDate = parseDate(row.previsaoEntrega); row.chegadaClienteDate = parseDate(row.chegadaCliente); row.emissaoDate = parseDate(row.emissao); row.saidaDate = parseDate(row.saida); row.referenceDate = row.dataProgramadaDate || row.saidaDate || row.agendaDate || row.previsaoEntregaDate || row.chegadaClienteDate || row.emissaoDate;
   row.monthNumber = monthNameToNumber(row.mes) || (row.referenceDate ? row.referenceDate.getMonth() + 1 : null);
   const normalizedStatus = normalizeText(row.status || row.faturamento || '');
+  row.baseStatus = normalizeBaseStatusLabel(row.status || row.faturamento || getRawField(row, ['Status Aplicativo', 'PROCV STATUS TRANSPORTE+', 'Situação', 'Situacao']));
   row.delivered = isDelivered(normalizedStatus); row.waitingUnload = isWaitingUnload(normalizedStatus); row.transit = isTransit(normalizedStatus, row); row.open = !row.delivered && !row.waitingUnload;
   row.occurrenceType = extractOccurrenceType(record, row); row.occurrenceDescription = extractOccurrenceDescription(record, row);
   row.occurrenceText = getOccurrenceText(row); row.hasOccurrence = isMeaningfulOccurrence(row.occurrenceText);
@@ -495,11 +496,28 @@ function getAliasedValue(record, aliases) {
   const keys = Object.keys(record).filter((key) => !key.startsWith('__'));
   const normalizedKeys = keys.map((key) => ({ key, norm: normalizeText(key) }));
   const normalizedAliases = aliases.map((alias) => normalizeText(alias)).filter(Boolean);
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
   return '';
 }
+
+function normalizeBaseStatusLabel(value) {
+  const raw = cleanLabel(value);
+  const n = normalizeText(raw);
+  if (!n) return 'Sem status';
+  if (/em transito fora do prazo|em transito atrasad|transito fora|trânsito fora|fora do prazo/.test(n)) return 'Em transito fora do prazo';
+  if (/em transito no prazo|transito no prazo|trânsito no prazo/.test(n)) return 'Em transito no prazo';
+  if (/^ag descarga$|aguard descarga|aguardando descarga|descarga no cliente/.test(n)) return 'Ag Descarga';
+  if (/descarreg/.test(n)) return 'Descarregando';
+  if (/aguardando liberacao|ag liberacao|liberacao/.test(n)) return 'Aguardando liberação';
+  if (/devolv/.test(n)) return 'Devolvido';
+  if (/em doca|veic em doca|veiculo em doca|doca/.test(n)) return 'Em doca';
+  if (/(finalizad|entregue|entrega realizada|baixad|concluid)/.test(n) && !/(faturamento|entrada)/.test(n)) return 'Finalizado';
+  return raw;
+}
+
+function displayStatus(row) { return row?.baseStatus || normalizeBaseStatusLabel(row?.status || row?.faturamento || '') || row?.statusBucket || 'Sem status'; }
 
 function computeOntimeStatus(row, normalizedStatus) {
   const due = row.previsaoEntregaDate || row.agendaDate;
@@ -525,7 +543,7 @@ function isExplicitLateStatus(normalizedStatus) { return /(em transito fora do p
 function isDateBeforeToday(date) { return Boolean(date && startOfDay(date) < startOfDay(new Date())); }
 function computeStatusBucket(row, normalizedStatus) { if (row.delayed) return 'Fora do prazo'; if (row.waitingUnload) return 'Aguard. descarga'; if (row.delivered) return 'Finalizado'; if (row.transit) return 'Em trânsito'; if (/(faturamento|faturado|entrada concluida|entrada concluída)/.test(normalizedStatus)) return 'Faturado'; return 'Em aberto'; }
 function isDelivered(normalizedStatus) { return /(finalizad|entregue|entrega realizada|baixad|concluid)/.test(normalizedStatus) && !/(faturamento|entrada)/.test(normalizedStatus); }
-function isWaitingUnload(normalizedStatus) { return /(aguardando descarga|descarga no cliente|em descarga|aguard descarga)/.test(normalizedStatus); }
+function isWaitingUnload(normalizedStatus) { return /(^ag descarga$|ag\.? descarga|aguardando descarga|descarga no cliente|em descarga|aguard descarga)/.test(normalizedStatus); }
 function isTransit(normalizedStatus, row) { return /(transito|trânsito|rota|viagem|a caminho|em entrega|fazendo entrega|em andamento|desloc|carregado|coleta)/.test(normalizedStatus) || (!row.delivered && !row.waitingUnload && (row.placa || row.motorista) && (row.previsaoEntregaDate || row.agendaDate)); }
 function getOccurrenceText(row) {
   const parts = [];
@@ -536,14 +554,14 @@ function getOccurrenceText(row) {
   return parts.filter(Boolean).join(' • ');
 }
 function extractOccurrenceType(record, row) {
-  const candidates = occurrenceFieldValues(record, (normalized) => (normalized.includes('tipo') && normalized.includes('ocorr')) || normalized === 'ocorrencia');
+  const candidates = occurrenceFieldValues(record, (normalized) => normalized.includes('ocorr') && (normalized.includes('tipo') || normalized.includes('categoria') || normalized.includes('classificacao') || normalized.includes('classific') || normalized.includes('motivo') || normalized === 'ocorrencia' || normalized === 'ocorrencias'));
   candidates.push(row && row.tipoOcorrencia, row && row.ocorrencia);
   const detailed = candidates.map(cleanLabel).find(isDetailedOccurrenceLabel);
   if (detailed) return detailed;
   return '';
 }
 function extractOccurrenceDescription(record, row) {
-  const candidates = occurrenceFieldValues(record, (normalized) => (normalized.includes('descr') && normalized.includes('ocorr')) || (normalized.includes('motivo') && normalized.includes('ocorr')));
+  const candidates = occurrenceFieldValues(record, (normalized) => normalized.includes('ocorr') && (normalized.includes('descr') || normalized.includes('detalhe') || normalized.includes('observ') || normalized.includes('motivo')));
   candidates.push(row && row.descricaoOcorrencia);
   const detailed = candidates.map(cleanLabel).find(isDetailedOccurrenceLabel);
   if (detailed) return detailed;
@@ -572,7 +590,7 @@ function extractReturnReason(record, row) {
   const candidateKeys = Object.keys(record || {}).filter((key) => {
     if (key.startsWith('__')) return false;
     const normalized = normalizeText(key);
-    return normalized.includes('motivodevolucao') || (normalized.includes('motivo') && normalized.includes('devol'));
+    return normalized.includes('motivodevolucao') || normalized.includes('motivodev') || (normalized.includes('devol') && /(motivo|razao|causa|justific|descr|observ|detalhe)/.test(normalized));
   });
   const candidates = [];
   CONFIG.aliases.motivoDevolucao.forEach((alias) => {
@@ -598,7 +616,14 @@ function isRetiraContract(row) { return /\bretira\b/.test(normalizeText(row && r
 function hasDocumentNumber(row) {
   const of = cleanLabel(row && row.of);
   const nf = cleanLabel(row && row.notaFiscal);
-  const valid = (value) => Boolean(value && !/^(0+|nao|não|sem|n\/a|-+)$/i.test(normalizeText(value)));
+  const valid = (value) => {
+    const text = cleanLabel(value);
+    if (!text) return false;
+    const n = normalizeText(text);
+    if (/^(0+|0+ 0+|nao|não|sem|sem documento|sem nf|sem of|n a|na|nd|n d|null|nulo|undefined|indefinido)$/.test(n)) return false;
+    if (/^-?0+(?:[.,]0+)?$/.test(text.trim())) return false;
+    return /[a-z0-9]/i.test(n);
+  };
   return valid(of) || valid(nf);
 }
 function normalizeReturnType(row) {
@@ -658,7 +683,7 @@ function renderGeneral() {
     kpiCard('Agendas D+2', formatInteger(metrics.d2Agendas), `${formatInteger(metrics.todayAgendas)} para hoje`, '📅', 'info', null)
   ].join('');
   renderScheduleCards();
-  renderBarList('statusChart', countBy(STATE.filtered, (row) => row.statusBucket), { empty: 'Nenhum status encontrado para os filtros.', colorResolver: (label) => statusColorClass(label), actionResolver: (label) => ({ action: 'statusBucket', value: label }) });
+  renderBarList('statusChart', countBy(STATE.filtered, (row) => displayStatus(row)), { empty: 'Nenhum status encontrado para os filtros.', colorResolver: (label) => statusColorClass(label) });
   renderBarList('ufChart', topEntries(countBy(STATE.filtered, (row) => row.uf || 'Sem UF'), 12), { empty: 'Nenhuma UF encontrada para os filtros.', actionResolver: (label) => ({ action: 'uf', value: label }) });
   renderGeneralDashboardCharts(STATE.filtered, metrics);
   renderSourcePanels(); renderInsights('generalInsights', buildGeneralInsights(STATE.filtered)); renderRecordsTable('generalTable', STATE.filtered, { limit: 300 });
@@ -696,9 +721,9 @@ function renderScheduleCards() {
 }
 
 function renderGeneralDashboardCharts(rows, metrics) {
-  renderDonutDashboard('generalStatusDonut', topEntries(countBy(rows, (row) => row.statusBucket), 6).map(([label, value]) => ({
-    label, value, cls: statusColorClass(label), action: { action: 'statusBucket', value: label }
-  })), { centerValue: formatInteger(rows.length), centerLabel: 'registros', measureLabel: 'Status operacional calculado a partir de Status, ONTIME, previsão e chegada.' });
+  renderDonutDashboard('generalStatusDonut', topEntries(countBy(rows, (row) => displayStatus(row)), 6).map(([label, value]) => ({
+    label, value, cls: statusColorClass(label), action: { action: 'chartPreview', value: `statusChart|||${label}` }
+  })), { centerValue: formatInteger(rows.length), centerLabel: 'registros', measureLabel: 'Status de entrega conforme a planilha base.' });
 
   renderMonthlyComboDashboard('generalTrendChart', buildMonthlyTrend(rows));
 
@@ -1071,13 +1096,13 @@ function renderReportBuilder() {
   const blocks = [];
   if (selected.includes('kpis')) blocks.push(`<div class="report-block"><h4>Indicadores gerais</h4><div class="mini-kpi-row"><span><b>${formatInteger(metrics.totalNotes)}</b> notas</span><span><b>${formatInteger(metrics.totalLoads)}</b> cargas</span><span><b>${formatInteger(metrics.delayed)}</b> atrasos</span><span><b>${formatInteger(metrics.inTransit)}</b> trânsito</span></div></div>`);
   if (selected.includes('performance')) blocks.push(`<div class="report-block"><h4>Performance</h4><div class="report-big-number">${metrics.ontimeRate}%</div><p>${formatInteger(metrics.performanceEligible)} notas elegíveis para ONTIME.</p></div>`);
-  if (selected.includes('status')) blocks.push(reportBarBlock('Status operacional', topEntries(countBy(rows, (row) => row.statusBucket), 8)));
+  if (selected.includes('status')) blocks.push(reportBarBlock('Status de entrega', topEntries(countBy(rows, (row) => displayStatus(row)), 8)));
   if (selected.includes('uf')) blocks.push(reportBarBlock('Distribuição por UF', topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 10)));
   if (selected.includes('schedules')) blocks.push(reportScheduleBlock(rows));
   if (selected.includes('occurrences')) blocks.push(reportBarBlock('Ocorrências por tipo', topEntries(countBy(rows.filter((row) => row.hasOccurrence), occurrenceTypeLabel), 8)));
   if (selected.includes('returns')) blocks.push(reportBarBlock('Motivos de devolução', topEntries(countBy(rows.filter((row) => row.hasReturn), (row) => cleanLabel(row.returnReason) || 'Sem motivo informado'), 8)));
   if (selected.includes('transporters')) blocks.push(reportBarBlock('Transportadores', topEntries(countBy(rows, (row) => normalizeTransporterLabel(row.transportadora)), 8)));
-  if (selected.includes('details')) blocks.push(`<div class="report-block full"><h4>Detalhes</h4><div class="report-mini-table">${rows.slice(0, 12).map((row) => `<div data-open-record="${escapeHtml(row.id)}"><b>${escapeHtml(row.of || row.notaFiscal || '-')}</b><span>${escapeHtml(truncate(row.cliente || '-', 34))}</span><small>${escapeHtml(row.statusBucket)} • ${escapeHtml(row.uf || '-')}</small></div>`).join('')}</div></div>`);
+  if (selected.includes('details')) blocks.push(`<div class="report-block full"><h4>Detalhes</h4><div class="report-mini-table">${rows.slice(0, 12).map((row) => `<div data-open-record="${escapeHtml(row.id)}"><b>${escapeHtml(row.of || row.notaFiscal || '-')}</b><span>${escapeHtml(truncate(row.cliente || '-', 34))}</span><small>${escapeHtml(displayStatus(row))} • ${escapeHtml(row.uf || '-')}</small></div>`).join('')}</div></div>`);
   container.innerHTML = blocks.join('') || emptyState('Selecione ao menos uma informação para montar o dashboard.');
   if (showDynamic) renderDynamicInfo(rows);
   else {
@@ -1091,7 +1116,7 @@ function getSelectedReportOptions() {
 }
 function getDynamicDimensionDefinitions() {
   return {
-    status: { label: 'Status operacional', measure: 'Status calculado pelo painel.', getter: (row) => row.statusBucket || 'Sem status' },
+    status: { label: 'Status de entrega', measure: 'Status de entrega conforme a planilha base.', getter: (row) => displayStatus(row) || 'Sem status' },
     uf: { label: 'UF', measure: 'UF de destino informada na planilha.', getter: (row) => row.uf || 'Sem UF' },
     performance: { label: 'Performance ONTIME', measure: 'Classificação ONTIME calculada pela regra do painel.', getter: (row) => row.performanceEligible ? (row.ontimeStatus === true ? 'No prazo' : 'Fora do prazo') : 'Não contabilizado' },
     occurrence: { label: 'Ocorrência', measure: 'Tipo/descrição de ocorrência informado na planilha.', getter: (row) => row.hasOccurrence ? occurrenceTypeLabel(row) : 'Sem ocorrência' },
@@ -2000,7 +2025,7 @@ function handleSummaryTooltipOut(event) {
 
 function chartMeasureDescription(containerId, fallback = 'registros filtrados no painel') {
   const map = {
-    statusChart: 'Status calculado pelo painel a partir de Status, ONTIME, previsão e chegada.',
+    statusChart: 'Status de entrega conforme a planilha base.',
     ufChart: 'UF de destino informada na planilha.',
     occurrenceTypes: 'Tipo/Descrição da ocorrência informada na planilha.',
     occurrenceUf: 'UF das linhas marcadas com ocorrência.',
@@ -2091,7 +2116,7 @@ function tableSortValue(row, key) {
     cliente: row.cliente,
     destino: `${row.uf || ''} ${row.cidade || ''}`,
     veiculo: `${row.placa || ''} ${row.motorista || ''}`,
-    status: row.statusBucket,
+    status: displayStatus(row),
     ontime: row.ontimeStatus === true ? 1 : row.ontimeStatus === false ? -1 : 0,
     occurrence: row.hasOccurrence ? 1 : 0,
     return: row.hasReturn ? 1 : 0
@@ -2109,14 +2134,16 @@ function compareValues(a, b) {
 }
 function recordRowHtml(row) {
   const ontimeBadge = row.ontimeStatus === true ? '<span class="badge success">No prazo</span>' : row.ontimeStatus === false ? '<span class="badge danger">Fora prazo</span>' : '<span class="badge">Sem ONTIME</span>';
-  const summary = `<strong>${escapeHtml(row.of || row.notaFiscal || 'Registro')}</strong><br>${escapeHtml(row.cliente || '-') }<br>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br>Status: ${escapeHtml(row.statusBucket)}${row.hasOccurrence ? '<br>Com ocorrência' : ''}${row.hasReturn ? '<br>Com devolução' : ''}`;
-  return `<tr data-open-record="${escapeHtml(row.id)}" data-summary="${escapeHtml(summary)}"><td><span class="badge info">${escapeHtml(row.source || '-')}</span></td><td><strong>${escapeHtml(formatDate(row.referenceDate) || row.dataProgramada || '-')}</strong><br><small>Agenda: ${escapeHtml(formatDate(row.agendaDate) || row.agenda || '-')}</small></td><td><strong>${escapeHtml(row.of || '-')}</strong><br><small>NF: ${escapeHtml(row.notaFiscal || '-')}</small></td><td title="${escapeHtml(row.cliente || '')}">${escapeHtml(truncate(row.cliente || '-', 34))}</td><td>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br><small>${escapeHtml(row.region || '')}</small></td><td>${escapeHtml(row.placa || '-')}<br><small>${escapeHtml(row.motorista || '-')}</small></td><td><span class="badge ${statusColorClass(row.statusBucket)}">${escapeHtml(row.statusBucket)}</span><br><small>${escapeHtml(truncate(row.status || row.faturamento || '-', 28))}</small></td><td>${ontimeBadge}</td><td>${row.hasOccurrence ? `<span class="badge warn" title="${escapeHtml(row.occurrenceText)}">Sim</span>` : '<span class="badge">Não</span>'}</td><td>${row.hasReturn ? `<span class="badge purple" title="${escapeHtml(row.returnText)}">Sim</span>` : '<span class="badge">Não</span>'}</td></tr>`;
+  const baseStatus = displayStatus(row);
+  const performanceInfo = row.statusBucket && normalizeText(row.statusBucket) !== normalizeText(baseStatus) ? `Performance: ${row.statusBucket}` : 'Status da planilha';
+  const summary = `<strong>${escapeHtml(row.of || row.notaFiscal || 'Registro')}</strong><br>${escapeHtml(row.cliente || '-') }<br>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br>Status planilha: ${escapeHtml(baseStatus)}<br>Status performance: ${escapeHtml(row.statusBucket || '-')}${row.hasOccurrence ? '<br>Com ocorrência' : ''}${row.hasReturn ? '<br>Com devolução' : ''}`;
+  return `<tr data-open-record="${escapeHtml(row.id)}" data-summary="${escapeHtml(summary)}"><td><span class="badge info">${escapeHtml(row.source || '-')}</span></td><td><strong>${escapeHtml(formatDate(row.referenceDate) || row.dataProgramada || '-')}</strong><br><small>Agenda: ${escapeHtml(formatDate(row.agendaDate) || row.agenda || '-')}</small></td><td><strong>${escapeHtml(row.of || '-')}</strong><br><small>NF: ${escapeHtml(row.notaFiscal || '-')}</small></td><td title="${escapeHtml(row.cliente || '')}">${escapeHtml(truncate(row.cliente || '-', 34))}</td><td>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br><small>${escapeHtml(row.region || '')}</small></td><td>${escapeHtml(row.placa || '-')}<br><small>${escapeHtml(row.motorista || '-')}</small></td><td><span class="badge ${statusColorClass(baseStatus)}">${escapeHtml(baseStatus)}</span><br><small>${escapeHtml(truncate(performanceInfo, 32))}</small></td><td>${ontimeBadge}</td><td>${row.hasOccurrence ? `<span class="badge warn" title="${escapeHtml(row.occurrenceText)}">Sim</span>` : '<span class="badge">Não</span>'}</td><td>${row.hasReturn ? `<span class="badge purple" title="${escapeHtml(row.returnText)}">Sim</span>` : '<span class="badge">Não</span>'}</td></tr>`;
 }
 function openRecordDetail(recordId) {
   const row = STATE.records.find((item) => item.id === recordId); if (!row) return;
   DOM.modalTitle.textContent = `${row.of || 'Carga'}${row.notaFiscal ? ` • NF ${row.notaFiscal}` : ''}`;
   const rawFields = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__'));
-  DOM.modalBody.innerHTML = `<div class="modal-summary"><div><span>Origem</span><strong>${escapeHtml(row.source || '-')}</strong></div><div><span>Cliente</span><strong title="${escapeHtml(row.cliente || '')}">${escapeHtml(row.cliente || '-')}</strong></div><div><span>Destino</span><strong>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}</strong></div><div><span>Status</span><strong>${escapeHtml(row.statusBucket)}</strong></div><div><span>Previsão</span><strong>${escapeHtml(formatDate(row.previsaoEntregaDate) || row.previsaoEntrega || '-')}</strong></div><div><span>Chegada cliente</span><strong>${escapeHtml(formatDate(row.chegadaClienteDate) || row.chegadaCliente || '-')}</strong></div><div><span>Placa</span><strong>${escapeHtml(row.placa || '-')}</strong></div><div><span>Motorista</span><strong>${escapeHtml(row.motorista || '-')}</strong></div></div><div class="field-grid">${rawFields.map(([key, value]) => `<div class="field-item"><span>${escapeHtml(key)}</span><p>${escapeHtml(isPresent(value) ? String(value) : '-')}</p></div>`).join('')}</div>`;
+  DOM.modalBody.innerHTML = `<div class="modal-summary"><div><span>Origem</span><strong>${escapeHtml(row.source || '-')}</strong></div><div><span>Cliente</span><strong title="${escapeHtml(row.cliente || '')}">${escapeHtml(row.cliente || '-')}</strong></div><div><span>Destino</span><strong>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}</strong></div><div><span>Status planilha</span><strong>${escapeHtml(displayStatus(row))}</strong></div><div><span>Status performance</span><strong>${escapeHtml(row.statusBucket || '-')}</strong></div><div><span>Previsão</span><strong>${escapeHtml(formatDate(row.previsaoEntregaDate) || row.previsaoEntrega || '-')}</strong></div><div><span>Chegada cliente</span><strong>${escapeHtml(formatDate(row.chegadaClienteDate) || row.chegadaCliente || '-')}</strong></div><div><span>Placa</span><strong>${escapeHtml(row.placa || '-')}</strong></div><div><span>Motorista</span><strong>${escapeHtml(row.motorista || '-')}</strong></div></div><div class="field-grid">${rawFields.map(([key, value]) => `<div class="field-item"><span>${escapeHtml(key)}</span><p>${escapeHtml(hasUsableSpreadsheetValue(value) ? String(value) : '-')}</p></div>`).join('')}</div>`;
   if (typeof DOM.detailModal.showModal === 'function') {
     try { DOM.detailModal.showModal(); } catch (_) { DOM.detailModal.setAttribute('open', 'open'); }
   } else DOM.detailModal.setAttribute('open', 'open');
@@ -2201,7 +2228,7 @@ function buildChartPreviewRows(contextValue) {
     const title = rawContext.replace(/^report:/, '');
     filtered = filtered.filter((row) => {
       const nTitle = normalizeText(title);
-      if (nTitle.includes('status')) return row.statusBucket === label;
+      if (nTitle.includes('status')) return normalizeText(displayStatus(row)) === normalizedLabel;
       if (nTitle.includes('uf')) return row.uf === label;
       if (nTitle.includes('ocorr')) return row.hasOccurrence && normalizeText(occurrenceTypeLabel(row)) === normalizedLabel;
       if (nTitle.includes('devol')) return row.hasReturn && normalizeText(cleanLabel(row.returnReason) || 'Sem motivo informado') === normalizedLabel;
@@ -2225,7 +2252,7 @@ function buildChartPreviewRows(contextValue) {
     return { rows: filtered, label: `Performance • ${label}`, context: 'Performance ONTIME' };
   }
   const filters = {
-    statusChart: (row) => row.statusBucket === label,
+    statusChart: (row) => normalizeText(displayStatus(row)) === normalizedLabel,
     ufChart: (row) => row.uf === label,
     occurrenceTypes: (row) => row.hasOccurrence && normalizeText(occurrenceTypeLabel(row)) === normalizedLabel,
     occurrenceUf: (row) => row.hasOccurrence && row.uf === label,
@@ -2264,7 +2291,7 @@ function filterPerformanceGaugeRows(rows, label) {
 function chartPreviewHtml(rows, label, context) {
   if (!rows.length) return emptyState('Nenhum registro encontrado para este item do gráfico nos filtros atuais.');
   const m = computeMetrics(rows);
-  const byStatus = countBy(rows, (row) => row.statusBucket || 'Sem status');
+  const byStatus = countBy(rows, (row) => displayStatus(row) || 'Sem status');
   const byUf = countBy(rows, (row) => row.uf || 'Sem UF');
   const body = rows.slice(0, 250).map((row) => recordRowHtml(row)).join('');
   return `<div class="occurrence-detail-summary chart-preview-summary"><div><span>Item</span><strong>${escapeHtml(label)}</strong></div><div><span>Registros</span><strong>${formatInteger(rows.length)}</strong></div><div><span>Status principal</span><strong>${escapeHtml(topLabel(byStatus) || '-')}</strong></div><div><span>UF principal</span><strong>${escapeHtml(topLabel(byUf) || '-')}</strong></div></div><div class="mini-kpi-row chart-preview-kpis"><span><b>${formatInteger(m.totalNotes)}</b> notas</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.occurrences)}</b> ocorrências</span><span><b>${m.ontimeRate}%</b> ONTIME</span></div><p class="modal-note">Contabilização: ${escapeHtml(context)}. Clique em uma linha para abrir todos os campos. Use Exportar XLSX para a base completa ou Imprimir para a prévia.</p><div class="table-wrap occurrence-detail-table"><table class="data-table table-clickable"><thead><tr><th>Origem</th><th>Data / Agenda</th><th>Carga / NF</th><th>Cliente</th><th>Destino</th><th>Veículo / Motorista</th><th>Status</th><th>ONTIME</th><th>Ocorrência</th><th>Devolução</th></tr></thead><tbody>${body}</tbody></table></div>${rows.length > 250 ? `<div class="empty-state">Exibindo 250 de ${formatInteger(rows.length)} registros. Exporte o XLSX para a base completa.</div>` : ''}`;
@@ -2302,7 +2329,7 @@ function occurrenceDetailHtml(rows, label) {
   const byUf = countBy(rows, (row) => row.uf || 'Sem UF');
   const bySector = countBy(rows, (row) => cleanLabel(row.setor) || 'Sem setor');
   const headers = ['Origem', 'Data', 'Carga', 'NF', 'Cliente', 'Destino', 'Motorista/Placa', 'Status', 'Setor', 'ONTIME'];
-  const body = rows.slice(0, 600).map((row) => `<tr data-open-record="${escapeHtml(row.id)}"><td>${escapeHtml(row.source || '-')}</td><td>${escapeHtml(formatDate(row.referenceDate) || '-')}</td><td>${escapeHtml(row.of || '-')}</td><td>${escapeHtml(row.notaFiscal || '-')}</td><td>${escapeHtml(truncate(row.cliente || '-', 42))}</td><td>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}</td><td>${escapeHtml(row.motorista || row.placa || '-')}</td><td>${escapeHtml(row.statusBucket || '-')}</td><td>${escapeHtml(row.setor || '-')}</td><td>${escapeHtml(row.ontimeStatus === true ? 'No prazo' : row.ontimeStatus === false ? 'Fora prazo' : 'Sem ONTIME')}</td></tr>`).join('');
+  const body = rows.slice(0, 600).map((row) => `<tr data-open-record="${escapeHtml(row.id)}"><td>${escapeHtml(row.source || '-')}</td><td>${escapeHtml(formatDate(row.referenceDate) || '-')}</td><td>${escapeHtml(row.of || '-')}</td><td>${escapeHtml(row.notaFiscal || '-')}</td><td>${escapeHtml(truncate(row.cliente || '-', 42))}</td><td>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}</td><td>${escapeHtml(row.motorista || row.placa || '-')}</td><td>${escapeHtml(displayStatus(row) || '-')}</td><td>${escapeHtml(row.setor || '-')}</td><td>${escapeHtml(row.ontimeStatus === true ? 'No prazo' : row.ontimeStatus === false ? 'Fora prazo' : 'Sem ONTIME')}</td></tr>`).join('');
   return `<div class="occurrence-detail-summary"><div><span>Descrição</span><strong>${escapeHtml(label)}</strong></div><div><span>Registros</span><strong>${formatInteger(rows.length)}</strong></div><div><span>UF principal</span><strong>${escapeHtml(topLabel(byUf) || '-')}</strong></div><div><span>Setor principal</span><strong>${escapeHtml(topLabel(bySector) || '-')}</strong></div></div><p class="modal-note">Clique em uma linha para abrir todos os campos da planilha. A exportação XLSX desta tela contém as colunas completas.</p><div class="table-wrap occurrence-detail-table"><table class="data-table table-clickable"><thead><tr>${headers.map((head) => `<th>${escapeHtml(head)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>${rows.length > 600 ? `<div class="empty-state">Exibindo 600 de ${formatInteger(rows.length)} registros. Exporte o XLSX para a base completa.</div>` : ''}`;
 }
 function exportOccurrenceDetailXlsx() {
@@ -2517,7 +2544,7 @@ function aiReportColumnDefinitions() {
     { key: 'placa', label: 'Placa', patterns: [/placa/, /cavalo/], getter: (row) => row.placa || '' },
     { key: 'previsao', label: 'Data de previsão de entrega', patterns: [/previs[aã]o\s+(de\s+)?entrega/, /data\s+prevista/, /prev\.?\s+entrega/], getter: (row) => formatDate(row.previsaoEntregaDate) || row.previsaoEntrega || '' },
     { key: 'agenda', label: 'Data da agenda', patterns: [/agenda|agendamento|data\s+agenda/], getter: (row) => formatDate(row.agendaDate) || row.agenda || '' },
-    { key: 'status', label: 'Status de entrega', patterns: [/status\s+(de\s+)?entrega/, /status\s+operacional/, /situa[cç][aã]o/, /\bstatus\b/], getter: (row) => row.statusBucket || row.status || '' },
+    { key: 'status', label: 'Status de entrega', patterns: [/status\s+(de\s+)?entrega/, /status\s+operacional/, /situa[cç][aã]o/, /\bstatus\b/], getter: (row) => displayStatus(row) || row.status || '' },
     { key: 'ontime', label: 'ONTIME', patterns: [/ontime|on\s*time|prazo|sla/], getter: (row) => row.ontimeStatus === true ? 'No prazo' : row.ontimeStatus === false ? 'Fora do prazo' : 'Sem ONTIME' },
     { key: 'cliente', label: 'Cliente', patterns: [/cliente|destinatario|destinat[aá]rio/], getter: (row) => row.cliente || '' },
     { key: 'cidade', label: 'Cidade', patterns: [/cidade|municipio|munic[ií]pio/], getter: (row) => row.cidade || '' },
@@ -2632,7 +2659,7 @@ function addTypingMessage() {
 function removeTypingMessage(element) { if (element && element.parentNode) element.parentNode.removeChild(element); }
 function addMessage(text, kind) { const div = document.createElement('div'); div.className = `chat-message ${kind}`; div.textContent = text; DOM.monitorMessages.appendChild(div); DOM.monitorMessages.scrollTop = DOM.monitorMessages.scrollHeight; return div; }
 function buildQuickReport() {
-  const rows = STATE.filtered, m = computeMetrics(rows), byStatus = topEntries(countBy(rows, (row) => row.statusBucket), 6), byUf = topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 8), byOcc = topEntries(countBy(rows.filter((row) => row.hasOccurrence), (row) => row.uf || 'Sem UF'), 5), byReturn = topEntries(countBy(rows.filter((row) => row.hasReturn), (row) => row.region || 'Sem região'), 5);
+  const rows = STATE.filtered, m = computeMetrics(rows), byStatus = topEntries(countBy(rows, (row) => displayStatus(row)), 6), byUf = topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 8), byOcc = topEntries(countBy(rows.filter((row) => row.hasOccurrence), (row) => row.uf || 'Sem UF'), 5), byReturn = topEntries(countBy(rows.filter((row) => row.hasReturn), (row) => row.region || 'Sem região'), 5);
   return `Relatório rápido - Torre de Controle\nGerado em ${formatDateTime(new Date())}\n\nFiltros atuais: ${formatInteger(rows.length)} registro(s) | ${formatInteger(m.totalNotes)} nota(s) | ${formatInteger(m.totalLoads)} carga(s).\nEntregues/finalizadas: ${formatInteger(m.delivered)} | Aguardando descarga: ${formatInteger(m.waitingUnload)} | Em trânsito: ${formatInteger(m.inTransit)} | Fora do prazo: ${formatInteger(m.delayed)}.\nPerformance ONTIME: ${m.ontimeRate}% em ${formatInteger(m.performanceEligible)} nota(s) contabilizadas.\nOcorrências: ${formatInteger(m.occurrences)} | Devoluções: ${formatInteger(m.returns)} | Agendas até D+2: ${formatInteger(m.d2Agendas)}.\n\nStatus: ${formatEntryList(byStatus)}\nTop UFs: ${formatEntryList(byUf)}\nOcorrências por UF: ${formatEntryList(byOcc) || 'sem registros'}\nDevoluções por região: ${formatEntryList(byReturn) || 'sem registros'}\n\nRecomendações Monitor IA:\n1. Priorizar cargas fora do prazo nas UFs com maior concentração.\n2. Validar ocorrências com setor responsável antes das agendas do dia.\n3. Analisar devoluções por motivo e motorista para ações preventivas.`;
 }
 
@@ -2666,7 +2693,7 @@ function exportQuickReportXlsx() {
     ['Devoluções', m.returns],
     ['Agendas até D+2', m.d2Agendas]
   ];
-  const statusRows = [['Status', 'Registros'], ...topEntries(countBy(rows, (row) => row.statusBucket), 20)];
+  const statusRows = [['Status planilha', 'Registros'], ...topEntries(countBy(rows, (row) => displayStatus(row)), 20)];
   const ufRows = [['UF', 'Registros'], ...topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 27)];
   downloadXlsx(`relatorio-monitoramento-${dateForFile(new Date())}.xlsx`, [
     { name: 'Resumo', rows: summaryRows },
@@ -2693,7 +2720,7 @@ function buildDynamicReportSheets(rows) {
     { name: 'Resumo', rows: buildReportSummaryRows(rows, selected) }
   ];
   if (selected.includes('performance')) sheets.push({ name: 'Performance', rows: buildPerformanceExportRows(rows) });
-  if (selected.includes('status')) sheets.push({ name: 'Status', rows: [['Status operacional', 'Registros'], ...topEntries(countBy(rows, (row) => row.statusBucket), 50)] });
+  if (selected.includes('status')) sheets.push({ name: 'Status', rows: [['Status planilha', 'Registros'], ...topEntries(countBy(rows, (row) => displayStatus(row)), 50)] });
   if (selected.includes('uf')) sheets.push({ name: 'UF', rows: [['UF', 'Registros'], ...topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 50)] });
   if (selected.includes('schedules')) sheets.push({ name: 'Agendas D2', rows: buildScheduleExportRows(rows) });
   if (selected.includes('occurrences')) sheets.push({ name: 'Ocorrencias', rows: [['Tipo/descrição', 'Registros'], ...topEntries(countBy(rows.filter((row) => row.hasOccurrence), occurrenceTypeLabel), 100)] });
@@ -2745,7 +2772,7 @@ function buildPerformanceExportRows(rows) {
 function buildScheduleExportRows(rows) {
   const today = new Date();
   const scheduled = rows.filter((row) => { const d = row.agendaDate || row.previsaoEntregaDate; return d && isBetweenDays(d, today, addDays(today, 2)); });
-  return [['Data', 'Carga/OF', 'NF', 'Cliente', 'UF', 'Cidade', 'Status'], ...scheduled.map((row) => [formatDate(row.agendaDate || row.previsaoEntregaDate), row.of || '', row.notaFiscal || '', row.cliente || '', row.uf || '', row.cidade || '', row.statusBucket || ''])];
+  return [['Data', 'Carga/OF', 'NF', 'Cliente', 'UF', 'Cidade', 'Status planilha', 'Status performance'], ...scheduled.map((row) => [formatDate(row.agendaDate || row.previsaoEntregaDate), row.of || '', row.notaFiscal || '', row.cliente || '', row.uf || '', row.cidade || '', displayStatus(row), row.statusBucket || ''])];
 }
 function buildDynamicExportRows(rows) {
   const defs = getDynamicDimensionDefinitions();
@@ -2791,10 +2818,11 @@ function buildReportPrintHtml() {
 
 function buildExportRows(rows) {
   const rawKeys = [...new Set(rows.flatMap((row) => Object.keys(row.raw || {}).filter((key) => !key.startsWith('__'))))];
-  const keys = ['Origem', 'Região', 'Status Painel', 'Atrasada', 'ONTIME Painel', 'Motivo Devolução Painel', ...rawKeys];
+  const keys = ['Origem', 'Região', 'Status Planilha', 'Status Painel', 'Atrasada', 'ONTIME Painel', 'Motivo Devolução Painel', ...rawKeys];
   return [keys, ...rows.map((row) => keys.map((key) => {
     if (key === 'Origem') return row.source;
     if (key === 'Região') return row.region;
+    if (key === 'Status Planilha') return displayStatus(row);
     if (key === 'Status Painel') return row.statusBucket;
     if (key === 'Atrasada') return row.delayed ? 'Sim' : 'Não';
     if (key === 'ONTIME Painel') return row.ontimeStatus === true ? 'No prazo' : row.ontimeStatus === false ? 'Fora do prazo' : 'Sem ONTIME';
@@ -2929,9 +2957,18 @@ function topEntries(obj, limit = 10) { return Object.entries(obj || {}).sort((a,
 function topLabel(obj) { const top = topEntries(obj, 1)[0]; return top ? top[0] : ''; }
 function formatEntryList(entries) { return entries.map(([label, value]) => `${label}: ${formatInteger(value)}`).join(' | '); }
 function uniqueCount(rows, getter) { const set = new Set(); rows.forEach((row) => { const value = getter(row); if (isPresent(value)) set.add(String(value).trim()); }); return set.size; }
-function statusColorClass(label) { return STATUS_CLASS[label] || ''; }
+function statusColorClass(label) { return STATUS_CLASS[label] || STATUS_CLASS[normalizeBaseStatusLabel(label)] || ''; }
 function emptyState(text) { return `<div class="empty-state">${escapeHtml(text)}</div>`; }
-function cleanLabel(value) { const text = String(value || '').trim(); return text && !/^[-–—.]$/.test(text) ? text : ''; }
+function cleanLabel(value) { const text = cleanSpreadsheetValue(value); return text && !/^[-–—.]$/.test(text) ? text : ''; }
+function cleanSpreadsheetValue(value) { const text = String(value == null ? '' : value).replace(/\s+/g, ' ').trim(); return isSpreadsheetMissingToken(text) ? '' : text; }
+function hasUsableSpreadsheetValue(value) { return isPresent(value) && !isSpreadsheetMissingToken(value); }
+function isSpreadsheetMissingToken(value) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return true;
+  if (/^#\s*(N\/A|NOME\?|NAME\?|REF!?|VALUE!?|VALOR!?|DIV\/0!?|NULL!?|NUM!?|ERRO!?|ERROR!?)$/i.test(raw)) return true;
+  const n = normalizeText(raw);
+  return /^(n a|na|nd|n d|nao disponivel|não disponivel|nao disponível|não disponível|erro|error|null|nulo|undefined|indefinido)$/.test(n);
+}
 function simplifyDescription(text) { const clean = cleanLabel(text) || 'Sem descrição'; return truncate(clean.replace(/\s+/g, ' '), 90); }
 function firstUfForRegion(region) { return Object.keys(CONFIG.regionByUf).find((uf) => CONFIG.regionByUf[uf] === region); }
 function percent(value, total) { return total ? `${Math.round((value / total) * 100)}%` : '0%'; }
