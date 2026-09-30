@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import html
+import io
 import json
 import re
 import sys
@@ -17,7 +18,9 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+import zipfile
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
@@ -75,6 +78,14 @@ def header_score(row: Iterable[str]) -> int:
 
 
 def fetch_text(url: str, attempts: int = 3) -> str:
+    raw, charset = fetch_bytes(url, attempts=attempts, timeout=60, accept="text/html,text/csv,text/plain,*/*")
+    text = raw.decode(charset or "utf-8", errors="replace")
+    if "Sorry, the file you have requested does not exist" in text:
+        raise RuntimeError("arquivo não encontrado pelo Google")
+    return text
+
+
+def fetch_bytes(url: str, attempts: int = 3, timeout: int = 60, accept: str = "*/*") -> tuple[bytes, str | None]:
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
@@ -82,16 +93,14 @@ def fetch_text(url: str, attempts: int = 3) -> str:
                 url,
                 headers={
                     "User-Agent": "Mozilla/5.0 (compatible; TorreControle/1.0)",
-                    "Accept": "text/html,text/csv,text/plain,*/*",
+                    "Accept": accept,
                 },
             )
-            with urllib.request.urlopen(req, timeout=45) as response:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
                 raw = response.read()
-                charset = response.headers.get_content_charset() or "utf-8"
-                text = raw.decode(charset, errors="replace")
-                if "Sorry, the file you have requested does not exist" in text:
-                    raise RuntimeError("arquivo não encontrado pelo Google")
-                return text
+                if not raw:
+                    raise RuntimeError("resposta vazia")
+                return raw, response.headers.get_content_charset()
         except Exception as exc:  # noqa: BLE001 - log detalhado no resultado JSON
             last_error = exc
             time.sleep(attempt * 1.5)
@@ -211,6 +220,171 @@ def rows_to_records(rows: list[list[str]], source: dict) -> list[dict]:
     return records
 
 
+def col_ref_to_index(ref: str) -> int:
+    letters = re.sub(r"[^A-Z]", "", ref.upper())
+    index = 0
+    for char in letters:
+        index = index * 26 + (ord(char) - ord("A") + 1)
+    return max(0, index - 1)
+
+
+def xml_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def relationship_map(zf: zipfile.ZipFile) -> dict[str, str]:
+    try:
+        root = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+    except KeyError:
+        return {}
+    output: dict[str, str] = {}
+    for rel in root:
+        if xml_name(rel.tag) != "Relationship":
+            continue
+        rel_id = rel.attrib.get("Id", "")
+        target = rel.attrib.get("Target", "")
+        if rel_id and target:
+            if target.startswith("/"):
+                output[rel_id] = target.lstrip("/")
+            else:
+                output[rel_id] = "xl/" + target.lstrip("/")
+    return output
+
+
+def shared_strings(zf: zipfile.ZipFile) -> list[str]:
+    try:
+        root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+    except KeyError:
+        return []
+    values: list[str] = []
+    for si in root:
+        if xml_name(si.tag) != "si":
+            continue
+        parts: list[str] = []
+        for node in si.iter():
+            if xml_name(node.tag) == "t" and node.text:
+                parts.append(node.text)
+        values.append("".join(parts))
+    return values
+
+
+def date_style_indexes(zf: zipfile.ZipFile) -> set[int]:
+    builtin_date_ids = set(range(14, 23)) | {27, 30, 36, 45, 46, 47, 50, 57}
+    try:
+        root = ET.fromstring(zf.read("xl/styles.xml"))
+    except KeyError:
+        return set()
+    custom_date_formats: set[int] = set()
+    for node in root.iter():
+        if xml_name(node.tag) != "numFmt":
+            continue
+        fmt_id = node.attrib.get("numFmtId")
+        code = norm(node.attrib.get("formatCode", ""))
+        if not fmt_id:
+            continue
+        if any(token in code for token in ("d", "dd", "dia", "yy", "yyyy", "h mm", "m yy")) and not any(token in code for token in ("red", "green", "blue", "r ")):
+            try:
+                custom_date_formats.add(int(fmt_id))
+            except ValueError:
+                pass
+    date_styles: set[int] = set()
+    cell_xfs = next((node for node in root.iter() if xml_name(node.tag) == "cellXfs"), None)
+    if cell_xfs is None:
+        return date_styles
+    for index, xf in enumerate([child for child in cell_xfs if xml_name(child.tag) == "xf"]):
+        try:
+            num_fmt_id = int(xf.attrib.get("numFmtId", "0"))
+        except ValueError:
+            num_fmt_id = 0
+        if num_fmt_id in builtin_date_ids or num_fmt_id in custom_date_formats:
+            date_styles.add(index)
+    return date_styles
+
+
+def excel_serial_to_date_text(value: float) -> str:
+    # Excel/Sheets usa 1899-12-30 como base prática para serials de data.
+    dt = datetime(1899, 12, 30) + timedelta(days=value)
+    return dt.strftime("%d/%m/%Y")
+
+
+def format_xlsx_number(value: str, as_date: bool) -> str:
+    raw = str(value or "").strip()
+    if raw == "":
+        return ""
+    try:
+        number = float(raw)
+    except ValueError:
+        return raw
+    if as_date:
+        return excel_serial_to_date_text(number)
+    if number.is_integer():
+        return str(int(number))
+    return ("%f" % number).rstrip("0").rstrip(".")
+
+
+def parse_xlsx_cell(cell: ET.Element, strings: list[str], date_styles: set[int]) -> str:
+    cell_type = cell.attrib.get("t", "")
+    try:
+        style_index = int(cell.attrib.get("s", "-1"))
+    except ValueError:
+        style_index = -1
+    value_node = next((child for child in cell if xml_name(child.tag) == "v"), None)
+    if cell_type == "inlineStr":
+        parts = [node.text or "" for node in cell.iter() if xml_name(node.tag) == "t"]
+        return "".join(parts).strip()
+    if value_node is None or value_node.text is None:
+        return ""
+    value = value_node.text.strip()
+    if cell_type == "s":
+        try:
+            return strings[int(value)].strip()
+        except (ValueError, IndexError):
+            return value
+    if cell_type == "b":
+        return "VERDADEIRO" if value == "1" else "FALSO"
+    return format_xlsx_number(value, style_index in date_styles)
+
+
+def parse_xlsx_sheet_rows(zf: zipfile.ZipFile, sheet_path: str, strings: list[str], date_styles: set[int]) -> list[list[str]]:
+    root = ET.fromstring(zf.read(sheet_path))
+    sheet_data = next((node for node in root.iter() if xml_name(node.tag) == "sheetData"), None)
+    if sheet_data is None:
+        return []
+    rows: list[list[str]] = []
+    for row_node in [node for node in sheet_data if xml_name(node.tag) == "row"]:
+        values: list[str] = []
+        for cell in [node for node in row_node if xml_name(node.tag) == "c"]:
+            ref = cell.attrib.get("r", "")
+            col_index = col_ref_to_index(ref) if ref else len(values)
+            while len(values) < col_index:
+                values.append("")
+            values.append(parse_xlsx_cell(cell, strings, date_styles))
+        rows.append(values)
+    return rows
+
+
+def parse_xlsx_workbook(blob: bytes, source: dict) -> list[tuple[str, list[dict], list[str]]]:
+    output: list[tuple[str, list[dict], list[str]]] = []
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+        rels = relationship_map(zf)
+        strings = shared_strings(zf)
+        date_styles = date_style_indexes(zf)
+        for sheet in workbook.iter():
+            if xml_name(sheet.tag) != "sheet":
+                continue
+            name = sheet.attrib.get("name", "Planilha")
+            rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id") or sheet.attrib.get("r:id", "")
+            path = rels.get(rel_id, "")
+            if not path or path not in zf.namelist():
+                continue
+            rows = parse_xlsx_sheet_rows(zf, path, strings, date_styles)
+            records = rows_to_records(rows, source)
+            if records:
+                output.append((name, records, list(records[0].keys())))
+    return output
+
+
 def discover_gids(pubhtml: str, base_pub: str) -> tuple[list[str], set[str]]:
     gids: list[str] = []
     target_gids: set[str] = set()
@@ -242,6 +416,29 @@ def fetch_source(source: dict) -> tuple[list[dict], list[str], list[str]]:
     candidates_found: list[tuple[tuple[int, int, int, int, int], str, list[dict], list[str]]] = []
     base = f"https://docs.google.com/spreadsheets/d/e/{source['pubId']}"
     pubhtml_text = ""
+
+    # Primeiro tenta o XLSX completo publicado. Ele traz os nomes das abas e evita
+    # cair no CSV padrão da primeira aba (ex.: Prog Emb), que omite NF, status,
+    # ONTIME, ocorrências e devoluções da aba acompanhamento.
+    try:
+        blob, _ = fetch_bytes(f"{base}/pub?output=xlsx", attempts=3, timeout=120, accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*")
+        workbook_candidates = parse_xlsx_workbook(blob, source)
+        if workbook_candidates:
+            sheet_names = ", ".join(name for name, _, _ in workbook_candidates[:12])
+            errors.append(f"xlsx abas úteis: {sheet_names}")
+        for sheet_name, records, fields in workbook_candidates:
+            sheet_norm = norm(sheet_name)
+            target_priority = 2 if sheet_norm == "acompanhamento" else 1 if "acompanh" in sheet_norm else 0
+            if target_priority <= 0:
+                continue
+            base_score = candidate_score(records, fields)
+            score = (target_priority, *base_score)
+            candidates_found.append((score, f"xlsx:{sheet_name}", records, fields))
+            errors.append(f"candidato xlsx {sheet_name}: {len(records)} linhas / {len(fields)} campos / score {score}")
+        if not any(origin.startswith("xlsx:") for _, origin, _, _ in candidates_found):
+            errors.append("xlsx sem aba acompanhamento útil")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"xlsx: {exc}")
 
     try:
         pubhtml_text = fetch_text(source["url"])

@@ -59,7 +59,7 @@ const STATE = {
   brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '', mapZoom: 1, mapPanX: 0, mapPanY: 0, mapDragging: false, mapDragStart: null, mapTransitionTimer: null, mapClickTimer: null, tableSorts: {},
   monitorMemory: { totalRequests: 0, topics: {}, lastQuestions: [], insights: [] }, monitorLastSignature: '', occurrenceDetailRows: [], occurrenceDetailLabel: '',
   chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicChartType: 'bars', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
-  filters: { from: '', to: '', month: 'all', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
+  filters: { from: '', to: '', month: 'all', source: 'all', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
 const pendingGviz = new Map();
@@ -155,7 +155,7 @@ function activateTab(tab) {
 }
 
 function selectSourceTab(source) {
-  const selected = source || CONFIG.sources[0].short;
+  const selected = source || 'all';
   DOM.filterSource.value = selected;
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === selected));
   onFilterChange();
@@ -495,9 +495,9 @@ function getAliasedValue(record, aliases) {
   const keys = Object.keys(record).filter((key) => !key.startsWith('__'));
   const normalizedKeys = keys.map((key) => ({ key, norm: normalizeText(key) }));
   const normalizedAliases = aliases.map((alias) => normalizeText(alias)).filter(Boolean);
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
-  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && isPresent(record[match.key])) return String(record[match.key]).trim(); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm === alias); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.startsWith(alias)); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
+  for (const alias of normalizedAliases) { const match = normalizedKeys.find((item) => item.norm.includes(alias)); if (match && hasUsableSpreadsheetValue(record[match.key])) return cleanSpreadsheetValue(record[match.key]); }
   return '';
 }
 
@@ -590,7 +590,14 @@ function isRetiraContract(row) { return /\bretira\b/.test(normalizeText(row && r
 function hasDocumentNumber(row) {
   const of = cleanLabel(row && row.of);
   const nf = cleanLabel(row && row.notaFiscal);
-  const valid = (value) => Boolean(value && !/^(0+|nao|não|sem|n\/a|-+)$/i.test(normalizeText(value)));
+  const valid = (value) => {
+    const text = cleanLabel(value);
+    if (!text) return false;
+    const n = normalizeText(text);
+    if (/^(0+|0+ 0+|nao|não|sem|sem documento|sem nf|sem of|n a|na|nd|n d|null|nulo|undefined|indefinido)$/.test(n)) return false;
+    if (/^-?0+(?:[.,]0+)?$/.test(text.trim())) return false;
+    return /[a-z0-9]/i.test(n);
+  };
   return valid(of) || valid(nf);
 }
 function normalizeReturnType(row) {
@@ -604,17 +611,17 @@ function isMeaningfulReturn(value) { const n = normalizeText(value); return Bool
 function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceType,row.occurrenceDescription,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
 
 function populateSourceFilter() {
-  DOM.filterSource.innerHTML = CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join('');
-  DOM.filterSource.value = STATE.filters.source || CONFIG.sources[0].short;
+  DOM.filterSource.innerHTML = '<option value="all">Todas as unidades</option>' + CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join('');
+  DOM.filterSource.value = STATE.filters.source || 'all';
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value));
 }
 function populateDynamicFilters() { const currentUf = DOM.filterUf.value || 'all'; const ufs = [...new Set(STATE.records.map((row) => row.uf).filter(Boolean))].sort(); DOM.filterUf.innerHTML = '<option value="all">Todas</option>' + ufs.map((uf) => `<option value="${escapeHtml(uf)}">${escapeHtml(uf)}</option>`).join(''); DOM.filterUf.value = ufs.includes(currentUf) ? currentUf : 'all'; STATE.filters.uf = DOM.filterUf.value; }
 function onFilterChange() {
-  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, month: DOM.filterMonth.value || 'all', source: DOM.filterSource.value || CONFIG.sources[0].short, uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
+  STATE.filters = { from: DOM.filterFrom.value, to: DOM.filterTo.value, month: DOM.filterMonth.value || 'all', source: DOM.filterSource.value || 'all', uf: DOM.filterUf.value, status: DOM.filterStatus.value, search: DOM.filterSearch.value.trim() };
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === STATE.filters.source));
   applyFiltersAndRender();
 }
-function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
+function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = 'all'; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
 function applyFiltersAndRender() { STATE.filtered = STATE.records.filter((row) => matchesFilters(row, STATE.filters)); renderAll(); }
 function matchesFilters(row, filters) {
   if (filters.source !== 'all' && row.source !== filters.source) return false; if (filters.uf !== 'all' && row.uf !== filters.uf) return false;
@@ -865,12 +872,25 @@ function kpiCard(title, value, subtitle, icon, variant = '', filterStatus = null
   const summary = `<strong>${escapeHtml(title)}</strong><br>${escapeHtml(String(value))}<br><small>${escapeHtml(subtitle)}</small>${filterStatus ? '<br><small>Clique para aplicar filtro.</small>' : ''}`;
   return `<article class="kpi-card ${escapeHtml(variant)} ${filterStatus ? 'kpi-clickable' : ''}" ${action} data-summary="${escapeHtml(summary)}"><div class="kpi-top"><span class="kpi-title">${escapeHtml(title)}</span><span class="kpi-icon">${escapeHtml(icon)}</span></div><div class="kpi-value">${escapeHtml(String(value))}</div><div class="kpi-subtitle">${escapeHtml(subtitle)}</div></article>`;
 }
+function sourceFilterLabel(value = STATE.filters.source) { return value && value !== 'all' ? value : 'Consolidado BA + SP'; }
+
 function renderSourcePanels() {
-  const source = CONFIG.sources.find((item) => item.short === STATE.filters.source) || CONFIG.sources[0];
   const rows = STATE.filtered;
+  if (!rows.length) { document.getElementById('sourcePanels').innerHTML = emptyState('Nenhuma informação para a unidade selecionada nos filtros.'); return; }
+  if (STATE.filters.source === 'all') {
+    const totalMetrics = computeMetrics(rows);
+    const cards = CONFIG.sources.map((source) => {
+      const sourceRows = rows.filter((row) => row.source === source.short);
+      const m = computeMetrics(sourceRows);
+      return `<div class="source-card selected-source" style="border-color:${source.color}44"><strong>${escapeHtml(source.short)}</strong><div class="source-metrics"><span><b>${formatInteger(sourceRows.length)}</b> registros</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.delivered)}</b> entregues</span><span><b>${m.ontimeRate}%</b> ONTIME unidade</span></div></div>`;
+    }).join('');
+    document.getElementById('sourcePanels').innerHTML = `<div class="source-card selected-source source-card-total"><strong>Consolidado BA + SP</strong><div class="source-metrics"><span><b>${formatInteger(rows.length)}</b> registros</span><span><b>${formatInteger(totalMetrics.delayed)}</b> atrasos</span><span><b>${formatInteger(totalMetrics.delivered)}</b> entregues</span><span><b>${totalMetrics.ontimeRate}%</b> ONTIME total</span></div></div>${cards}`;
+    return;
+  }
+  const source = CONFIG.sources.find((item) => item.short === STATE.filters.source) || CONFIG.sources[0];
   const m = computeMetrics(rows);
   const html = `<div class="source-card selected-source" style="border-color:${source.color}44"><strong>${escapeHtml(source.short)}</strong><div class="source-metrics"><span><b>${formatInteger(rows.length)}</b> registros</span><span><b>${formatInteger(m.delayed)}</b> atrasos</span><span><b>${formatInteger(m.delivered)}</b> entregues</span><span><b>${m.ontimeRate}%</b> ONTIME unidade</span></div></div>`;
-  document.getElementById('sourcePanels').innerHTML = rows.length ? html : emptyState('Nenhuma informação para a unidade selecionada nos filtros.');
+  document.getElementById('sourcePanels').innerHTML = html;
 }
 
 function renderPerformance() {
@@ -885,7 +905,7 @@ function renderPerformance() {
   const rate = eligible.length ? Math.round((ontime / eligible.length) * 100) : 0;
   document.getElementById('performanceKpis').innerHTML = [
     kpiCard('Percentual consolidado', `${consolidatedRate}%`, `BA + SP • ${formatInteger(consolidatedEligible.length)} notas elegíveis`, '🎯', consolidatedRate >= 90 ? 'success' : consolidatedRate >= 75 ? 'warn' : 'danger'),
-    kpiCard(`Notas ${STATE.filters.source}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', '🧾'),
+    kpiCard(`Notas ${sourceFilterLabel()}`, formatInteger(eligible.length), 'Finalizado, aguardando descarga ou fora do prazo', '🧾'),
     kpiCard('Dentro do prazo', formatInteger(ontime), `${rate}% de aderência da unidade`, '✅', 'success'),
     kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base ONTIME`, '⚠', 'danger', 'delayed'),
     kpiCard('Em trânsito não contado', formatInteger(notCountedTransit), 'Dentro do prazo ou sem fechamento', '🚚', 'info', 'transit')
@@ -2643,7 +2663,7 @@ function exportQuickReportXlsx() {
   const summaryRows = [
     ['Relatório rápido - Torre de Controle'],
     ['Gerado em', formatDateTime(new Date())],
-    ['Unidade', STATE.filters.source || 'Todas'],
+    ['Unidade', sourceFilterLabel()],
     [],
     ['Indicador', 'Valor'],
     ['Registros', rows.length],
@@ -2701,7 +2721,7 @@ function buildReportSummaryRows(rows, selected) {
     ['Dashboard rápido - Torre de Controle'],
     ['Gerado em', formatDateTime(new Date())],
     ['Blocos selecionados', selected.join(', ') || 'Nenhum bloco selecionado'],
-    ['Unidade', STATE.filters.source || 'Todas'],
+    ['Unidade', sourceFilterLabel()],
     [],
     ['Indicador', 'Valor'],
     ['Registros', rows.length],
@@ -2777,7 +2797,7 @@ function buildReportPrintHtml() {
   const pageWidth = orientation === 'landscape' ? '277mm' : '190mm';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Torre de Controle</title><link rel="stylesheet" href="styles.css"><style>
     @page{size:A4 ${orientation};margin:8mm}*{box-sizing:border-box}html,body{background:#fff!important;color:#102033!important}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif}.print-page{width:${pageWidth};max-width:${pageWidth};margin:0 auto;transform-origin:top left}.print-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:0 0 10px;padding:10px 0;border-bottom:2px solid #dfe8f1}.print-header h1{margin:0;font-size:20px}.print-header p{margin:4px 0 0;color:#536474;font-size:11px}.report-preview,.dynamic-info-panel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}.report-block,.dynamic-info-panel,.insight,.report-bar,.dynamic-matrix-row,.dynamic-bar-item,.dynamic-ranking-row{break-inside:avoid;background:#fff!important;border:1px solid #dfe8f1!important;color:#102033!important;box-shadow:none!important}.report-block.full,.dynamic-info-panel{grid-column:1/-1}.report-block,.dynamic-info-panel{border-radius:14px!important;padding:10px!important}.mini-kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:8px!important}.report-bar,.dynamic-matrix-row,.dynamic-ranking-row{display:grid!important;grid-template-columns:minmax(80px,1fr) minmax(140px,2fr) auto!important;gap:8px!important;align-items:center!important;padding:7px!important;border-radius:10px!important}.dynamic-bar-item{display:grid!important;grid-template-columns:minmax(90px,1fr) minmax(160px,2fr)!important;gap:8px!important;padding:7px!important;border-radius:10px!important}.report-bar i,.dynamic-stack,.dynamic-bar-item i,.dynamic-ranking-row i{height:10px!important;border-radius:999px!important;background:#e8eef6!important;overflow:hidden!important}.report-bar em,.dynamic-stack span,.dynamic-bar-item em,.dynamic-ranking-row em{display:block!important;height:100%!important;background:#2a83c6}.dynamic-filter-chips,.dynamic-legend,.insight-list{display:flex!important;gap:6px!important;flex-wrap:wrap!important}.dynamic-type-buttons,.export-hint,button,.modal-close{display:none!important}.data-table{width:100%;border-collapse:collapse;font-size:9px}.data-table th,.data-table td{border:1px solid #dbe5ef;padding:4px;text-align:left}.table-wrap{max-height:none!important;overflow:visible!important}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-page{page-break-after:auto}.report-preview,.dynamic-info-panel{gap:8px!important}.panel-header{padding:0!important;margin:0 0 6px!important}}
-  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
+  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(sourceFilterLabel())} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
 }
 
 
@@ -2923,7 +2943,16 @@ function formatEntryList(entries) { return entries.map(([label, value]) => `${la
 function uniqueCount(rows, getter) { const set = new Set(); rows.forEach((row) => { const value = getter(row); if (isPresent(value)) set.add(String(value).trim()); }); return set.size; }
 function statusColorClass(label) { return STATUS_CLASS[label] || ''; }
 function emptyState(text) { return `<div class="empty-state">${escapeHtml(text)}</div>`; }
-function cleanLabel(value) { const text = String(value || '').trim(); return text && !/^[-–—.]$/.test(text) ? text : ''; }
+function cleanLabel(value) { const text = cleanSpreadsheetValue(value); return text && !/^[-–—.]$/.test(text) ? text : ''; }
+function cleanSpreadsheetValue(value) { const text = String(value == null ? '' : value).replace(/\s+/g, ' ').trim(); return isSpreadsheetMissingToken(text) ? '' : text; }
+function hasUsableSpreadsheetValue(value) { return isPresent(value) && !isSpreadsheetMissingToken(value); }
+function isSpreadsheetMissingToken(value) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return true;
+  if (/^#\s*(N\/A|NOME\?|NAME\?|REF!?|VALUE!?|VALOR!?|DIV\/0!?|NULL!?|NUM!?|ERRO!?|ERROR!?)$/i.test(raw)) return true;
+  const n = normalizeText(raw);
+  return /^(n a|na|nd|n d|nao disponivel|não disponivel|nao disponível|não disponível|erro|error|null|nulo|undefined|indefinido)$/.test(n);
+}
 function simplifyDescription(text) { const clean = cleanLabel(text) || 'Sem descrição'; return truncate(clean.replace(/\s+/g, ' '), 90); }
 function firstUfForRegion(region) { return Object.keys(CONFIG.regionByUf).find((uf) => CONFIG.regionByUf[uf] === region); }
 function percent(value, total) { return total ? `${Math.round((value / total) * 100)}%` : '0%'; }
