@@ -538,7 +538,7 @@
                     <option value="return">Devoluções</option>
                   </select>
                 </label>
-                <button class="btn" id="applyMapRegionGlobal" type="button">Aplicar região</button>
+                <button class="btn" id="applyMapRegionGlobal" type="button">Voltar Brasil</button>
               </div>
             </div>
 
@@ -579,6 +579,13 @@
               </article>
 
               <article class="onsupply-card map-heatmap-card">
+                <div class="map-card-heading">
+                  <div>
+                    <h3 id="mapFocusTitle">Mapa operacional do Brasil</h3>
+                    <small id="mapFocusSub">Selecione uma região para ampliar os estados e os dados do mapa.</small>
+                  </div>
+                  <span id="mapScopeBadge">Brasil</span>
+                </div>
                 <div class="map-zoom-controls" aria-label="Controles de zoom do mapa">
                   <button class="map-zoom-btn" id="mapZoomOut" type="button" aria-label="Diminuir zoom">−</button>
                   <span id="mapZoomLevel">100%</span>
@@ -603,6 +610,7 @@
                   </div>
                 </div>
                 <div id="regionSummary" class="region-summary"></div>
+                <div id="mapStateBreakdown" class="map-state-breakdown" aria-label="Resumo por estado"></div>
               </article>
               <article class="onsupply-card region-panel-mini">
                 <div class="panel-header compact"><h3>Monitor IA • Alertas do mapa</h3></div>
