@@ -1960,14 +1960,21 @@ function buildMapAlerts(rows, selectedRegion) {
 
 function renderTicker() {
   const track = document.getElementById('tickerTrack'), rows = STATE.filtered, today = new Date();
+  if (!track) return;
   const sourceLabel = STATE.filters.source && STATE.filters.source !== 'all' ? STATE.filters.source : 'Filial BA + Matriz SP';
   const todayAgendas = rows.filter((row) => isSameDay(row.agendaDate || row.previsaoEntregaDate, today));
   const d2Agendas = rows.filter((row) => isBetweenDays(row.agendaDate || row.previsaoEntregaDate, today, addDays(today, 2)));
   const delayed = rows.filter((row) => row.delayed), occurrencesToday = rows.filter((row) => row.hasOccurrence && isSameDay(row.referenceDate, today)), returns = rows.filter((row) => row.hasReturn);
-  const items = [`🕒 ${sourceLabel} • atualizado ${STATE.lastUpdated ? formatDateTime(STATE.lastUpdated) : '--'} • ${formatInteger(rows.length)} registros`, `📅 ${formatInteger(todayAgendas.length)} agenda(s) para hoje`, `⏭️ ${formatInteger(d2Agendas.length)} agenda(s) até D+2`, `🚨 ${formatInteger(delayed.length)} carga(s) fora do prazo`, `⚠️ ${formatInteger(occurrencesToday.length)} ocorrência(s) do dia`, `↩️ ${formatInteger(returns.length)} devolução(ões)`];
-  const weather = buildWeatherHeadline(); if (weather) items.push(`🌦️ ${weather}`);
-  const next = buildUnifiedAgendaTicker(d2Agendas, 4); if (next) items.push(`🔎 Próximas agendas: ${next}`);
-  track.innerHTML = items.map((item) => `<span>${escapeHtml(item)}</span>`).join('');
+  const sectors = [
+    { icon: '🕒', title: 'Operação', tone: 'info', html: `<strong>${escapeHtml(sourceLabel)}</strong><span>Atualizado ${escapeHtml(STATE.lastUpdated ? formatDateTime(STATE.lastUpdated) : '--')}</span><b>${formatInteger(rows.length)} registros</b>` },
+    { icon: '📅', title: 'Agenda', tone: 'success', html: `<b>${formatInteger(todayAgendas.length)} hoje</b><b>${formatInteger(d2Agendas.length)} até D+2</b>` },
+    { icon: '🚨', title: 'Riscos', tone: delayed.length ? 'danger' : 'success', html: `<b>${formatInteger(delayed.length)} fora do prazo</b><span>${formatInteger(occurrencesToday.length)} ocorrência(s) do dia</span><span>${formatInteger(returns.length)} devolução(ões)</span>` }
+  ];
+  const weather = buildWeatherTickerHtml();
+  if (weather) sectors.push({ icon: '🌦️', title: 'Tempo', tone: 'weather', html: weather });
+  const next = buildUnifiedAgendaTicker(d2Agendas, 4);
+  if (next) sectors.push({ icon: '🔎', title: 'Próximas agendas', tone: 'agenda', html: next });
+  track.innerHTML = sectors.map((item) => `<span class="ticker-sector ${escapeHtml(item.tone || '')}"><b class="ticker-sector-title">${escapeHtml(item.icon)} ${escapeHtml(item.title)}</b><span class="ticker-sector-body">${item.html}</span></span>`).join('');
 }
 function buildUnifiedAgendaTicker(rows, limit = 4) {
   const groups = new Map();
@@ -1990,8 +1997,13 @@ function buildUnifiedAgendaTicker(rows, limit = 4) {
     const ofs = Array.from(item.ofs).slice(0, 5).join(', ') || '-';
     const extraNfs = item.nfs.size > 8 ? ` +${item.nfs.size - 8}` : '';
     const uf = Array.from(item.ufs).join('/') || 'UF';
-    return `Agenda ${item.date} • ${uf} • Placa ${item.plate} • Motorista ${item.driver} • NFs ${nfs}${extraNfs} • OFs ${ofs}`;
-  }).join('  |  ');
+    return `<span class="ticker-agenda-item"><strong>Agenda ${escapeHtml(item.date)}</strong><em>${escapeHtml(uf)}</em><strong>Placa ${escapeHtml(item.plate)}</strong><span>Motorista ${escapeHtml(item.driver)}</span><span>NFs ${escapeHtml(nfs)}${escapeHtml(extraNfs)}</span><span>OFs ${escapeHtml(ofs)}</span></span>`;
+  }).join('<i class="ticker-separator">|</i>');
+}
+function buildWeatherTickerHtml() {
+  const entries = Object.entries(STATE.weather || {}).filter(([, value]) => value);
+  if (!entries.length) return '<span>Consulta indisponível no momento; acompanhe regiões críticas antes da saída.</span>';
+  return entries.map(([region, text]) => `<span><strong>${escapeHtml(region)}</strong> ${escapeHtml(text)}</span>`).join('<i class="ticker-separator">|</i>');
 }
 async function fetchWeather() {
   const weather = {};
@@ -2055,9 +2067,11 @@ function updateMonitorRealtimeInsights() {
 function askMonitor(question) {
   const topic = rememberMonitorInteraction(question);
   addUserMessage(question);
+  const typing = addTypingMessage();
   const generatedReport = maybeGenerateAiRequestedXlsx(question);
   const response = `${generatedReport ? generatedReport.message : answerQuestion(question)}\n\n${monitorLearningNote(topic)}`;
-  window.setTimeout(() => addAiMessage(response), 180);
+  const delay = Math.min(1700, 650 + Math.max(250, question.length * 8));
+  window.setTimeout(() => { removeTypingMessage(typing); addAiMessage(response); }, delay);
 }
 function maybeGenerateAiRequestedXlsx(question) {
   const q = normalizeText(question);
@@ -2191,9 +2205,19 @@ function answerQuestion(question) {
   if (/(total|quant|nota|carga|geral)/.test(q)) return `Nos filtros atuais existem ${formatInteger(metrics.totalNotes)} nota(s), ${formatInteger(metrics.totalLoads)} carga(s), ${formatInteger(metrics.delivered)} finalizada(s), ${formatInteger(metrics.inTransit)} em trânsito, ${formatInteger(metrics.delayed)} atrasada(s), ${formatInteger(metrics.occurrences)} ocorrência(s) e ${formatInteger(metrics.returns)} devolução(ões).`;
   return `Resumo da seleção: ${formatInteger(metrics.totalNotes)} notas, ${formatInteger(metrics.delayed)} atrasos, ${formatInteger(metrics.occurrences)} ocorrências, ${formatInteger(metrics.returns)} devoluções e ONTIME de ${metrics.ontimeRate}%. Pergunte, por exemplo: "quais cargas estão em atraso?", "gerar relatório" ou "onde encontro devoluções por motivo?"`;
 }
-function addAiMessage(text) { addMessage(text, 'ai'); }
-function addUserMessage(text) { addMessage(text, 'user'); }
-function addMessage(text, kind) { const div = document.createElement('div'); div.className = `chat-message ${kind}`; div.textContent = text; DOM.monitorMessages.appendChild(div); DOM.monitorMessages.scrollTop = DOM.monitorMessages.scrollHeight; }
+function addAiMessage(text) { return addMessage(text, 'ai'); }
+function addUserMessage(text) { return addMessage(text, 'user'); }
+function addTypingMessage() {
+  if (!DOM.monitorMessages) return null;
+  const div = document.createElement('div');
+  div.className = 'chat-message ai typing-message';
+  div.innerHTML = '<span>Monitor IA digitando</span><i></i><i></i><i></i>';
+  DOM.monitorMessages.appendChild(div);
+  DOM.monitorMessages.scrollTop = DOM.monitorMessages.scrollHeight;
+  return div;
+}
+function removeTypingMessage(element) { if (element && element.parentNode) element.parentNode.removeChild(element); }
+function addMessage(text, kind) { const div = document.createElement('div'); div.className = `chat-message ${kind}`; div.textContent = text; DOM.monitorMessages.appendChild(div); DOM.monitorMessages.scrollTop = DOM.monitorMessages.scrollHeight; return div; }
 function buildQuickReport() {
   const rows = STATE.filtered, m = computeMetrics(rows), byStatus = topEntries(countBy(rows, (row) => row.statusBucket), 6), byUf = topEntries(countBy(rows, (row) => row.uf || 'Sem UF'), 8), byOcc = topEntries(countBy(rows.filter((row) => row.hasOccurrence), (row) => row.uf || 'Sem UF'), 5), byReturn = topEntries(countBy(rows.filter((row) => row.hasReturn), (row) => row.region || 'Sem região'), 5);
   return `Relatório rápido - Torre de Controle\nGerado em ${formatDateTime(new Date())}\n\nFiltros atuais: ${formatInteger(rows.length)} registro(s) | ${formatInteger(m.totalNotes)} nota(s) | ${formatInteger(m.totalLoads)} carga(s).\nEntregues/finalizadas: ${formatInteger(m.delivered)} | Aguardando descarga: ${formatInteger(m.waitingUnload)} | Em trânsito: ${formatInteger(m.inTransit)} | Fora do prazo: ${formatInteger(m.delayed)}.\nPerformance ONTIME: ${m.ontimeRate}% em ${formatInteger(m.performanceEligible)} nota(s) contabilizadas.\nOcorrências: ${formatInteger(m.occurrences)} | Devoluções: ${formatInteger(m.returns)} | Agendas até D+2: ${formatInteger(m.d2Agendas)}.\n\nStatus: ${formatEntryList(byStatus)}\nTop UFs: ${formatEntryList(byUf)}\nOcorrências por UF: ${formatEntryList(byOcc) || 'sem registros'}\nDevoluções por região: ${formatEntryList(byReturn) || 'sem registros'}\n\nRecomendações Monitor IA:\n1. Priorizar cargas fora do prazo nas UFs com maior concentração.\n2. Validar ocorrências com setor responsável antes das agendas do dia.\n3. Analisar devoluções por motivo e motorista para ações preventivas.`;
@@ -2348,7 +2372,7 @@ function buildReportPrintHtml() {
   const pageWidth = orientation === 'landscape' ? '277mm' : '190mm';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Torre de Controle</title><link rel="stylesheet" href="styles.css"><style>
     @page{size:A4 ${orientation};margin:8mm}*{box-sizing:border-box}html,body{background:#fff!important;color:#102033!important}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif}.print-page{width:${pageWidth};max-width:${pageWidth};margin:0 auto;transform-origin:top left}.print-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:0 0 10px;padding:10px 0;border-bottom:2px solid #dfe8f1}.print-header h1{margin:0;font-size:20px}.print-header p{margin:4px 0 0;color:#536474;font-size:11px}.report-preview,.dynamic-info-panel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}.report-block,.dynamic-info-panel,.insight,.report-bar,.dynamic-matrix-row,.dynamic-bar-item,.dynamic-ranking-row{break-inside:avoid;background:#fff!important;border:1px solid #dfe8f1!important;color:#102033!important;box-shadow:none!important}.report-block.full,.dynamic-info-panel{grid-column:1/-1}.report-block,.dynamic-info-panel{border-radius:14px!important;padding:10px!important}.mini-kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:8px!important}.report-bar,.dynamic-matrix-row,.dynamic-ranking-row{display:grid!important;grid-template-columns:minmax(80px,1fr) minmax(140px,2fr) auto!important;gap:8px!important;align-items:center!important;padding:7px!important;border-radius:10px!important}.dynamic-bar-item{display:grid!important;grid-template-columns:minmax(90px,1fr) minmax(160px,2fr)!important;gap:8px!important;padding:7px!important;border-radius:10px!important}.report-bar i,.dynamic-stack,.dynamic-bar-item i,.dynamic-ranking-row i{height:10px!important;border-radius:999px!important;background:#e8eef6!important;overflow:hidden!important}.report-bar em,.dynamic-stack span,.dynamic-bar-item em,.dynamic-ranking-row em{display:block!important;height:100%!important;background:#2a83c6}.dynamic-filter-chips,.dynamic-legend,.insight-list{display:flex!important;gap:6px!important;flex-wrap:wrap!important}.dynamic-type-buttons,.export-hint,button,.modal-close{display:none!important}.data-table{width:100%;border-collapse:collapse;font-size:9px}.data-table th,.data-table td{border:1px solid #dbe5ef;padding:4px;text-align:left}.table-wrap{max-height:none!important;overflow:visible!important}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-page{page-break-after:auto}.report-preview,.dynamic-info-panel{gap:8px!important}.panel-header{padding:0!important;margin:0 0 6px!important}}
-  </style></head><body><main class="print-page"><header class="print-header"><div><h1>🚛 Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
+  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section>${dynamicSection}</main></body></html>`;
 }
 
 
