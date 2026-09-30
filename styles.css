@@ -6478,3 +6478,200 @@ body[data-theme="dark"] #mapScopeBadge {
   .heatmap-brazil svg { min-height: 430px; }
   .map-heatmap-card { min-height: 520px; }
 }
+
+/* Mapa enxuto: mapa no topo e informações dinâmicas abaixo */
+.map-only-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto !important;
+  grid-template-areas: "map" !important;
+  gap: 12px !important;
+}
+.map-only-grid > .map-heatmap-card {
+  grid-area: map !important;
+  min-height: 720px !important;
+}
+.map-only-grid .heatmap-brazil,
+.map-only-grid .heatmap-brazil svg {
+  min-height: 590px !important;
+}
+.map-info-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr) minmax(300px, .82fr) !important;
+  gap: 12px !important;
+  align-items: stretch !important;
+  margin-top: 12px !important;
+}
+.map-selection-summary,
+.map-city-panel,
+.map-info-row > .region-panel-mini {
+  min-height: 100% !important;
+}
+.map-city-breakdown {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 3px;
+}
+.city-breakdown-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 950;
+}
+.city-breakdown-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 16px;
+  color: var(--text);
+  background: rgba(255,255,255,.78);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.city-breakdown-card:hover,
+.city-breakdown-card.active {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+  background: color-mix(in srgb, var(--green) 10%, #ffffff);
+}
+.city-breakdown-card > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.city-breakdown-card b {
+  overflow: hidden;
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.city-breakdown-card em {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 950;
+}
+.city-breakdown-card > strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 950;
+}
+.city-breakdown-card small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-weight: 800;
+}
+.city-heat-layer,
+.map-city-spot {
+  cursor: pointer;
+}
+.map-city-spot .city-pulse {
+  fill: rgba(0,214,143,.18);
+  stroke: rgba(0,214,143,.28);
+  stroke-width: 1;
+}
+.map-city-spot .city-volume,
+.city-legend .city-volume {
+  fill: rgba(0,150,105,.72);
+  stroke: rgba(255,255,255,.9);
+  stroke-width: 2;
+}
+.map-city-spot.has-delay .city-volume,
+.city-legend .city-volume.delay {
+  fill: rgba(217,61,91,.82);
+}
+.map-city-spot .city-core {
+  fill: #07141f;
+  stroke: rgba(255,255,255,.9);
+  stroke-width: 1;
+}
+.map-city-spot .city-count {
+  fill: #ffffff;
+  font-size: 9px;
+  font-weight: 950;
+  pointer-events: none;
+}
+.city-bubble-label {
+  fill: #0b2133;
+  font-size: 9px;
+  font-weight: 950;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(255,255,255,.88);
+  stroke-width: 3px;
+}
+.city-legend text:first-of-type {
+  fill: #07141f;
+  font-size: 12px;
+  font-weight: 950;
+}
+.city-legend text:last-of-type {
+  fill: #647889;
+  font-size: 10px;
+  font-weight: 850;
+}
+.city-svg-cards span {
+  max-width: 100%;
+}
+body[data-theme="dark"] .city-breakdown-card {
+  border-color: rgba(181,211,239,.16) !important;
+  color: #f4f9ff !important;
+  background: rgba(255,255,255,.06) !important;
+}
+body[data-theme="dark"] .city-breakdown-title,
+body[data-theme="dark"] .city-breakdown-card > strong,
+body[data-theme="dark"] .city-breakdown-card b {
+  color: #f4f9ff !important;
+}
+body[data-theme="dark"] .city-breakdown-card em,
+body[data-theme="dark"] .city-breakdown-card small {
+  color: #d8e8f7 !important;
+}
+body[data-theme="dark"] .city-breakdown-card:hover,
+body[data-theme="dark"] .city-breakdown-card.active {
+  border-color: rgba(72,255,155,.38) !important;
+  background: rgba(72,255,155,.12) !important;
+}
+body[data-theme="dark"] .city-bubble-label {
+  fill: #f6fbff;
+  stroke: rgba(4,16,26,.9);
+}
+
+@media (max-width: 1320px) {
+  .map-only-grid {
+    grid-template-columns: 1fr !important;
+    grid-template-areas: "map" !important;
+  }
+  .map-info-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .map-info-row > .region-panel-mini:last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 860px) {
+  .map-only-grid,
+  .map-info-row {
+    grid-template-columns: 1fr !important;
+    grid-template-areas: none !important;
+  }
+  .map-info-row > .region-panel-mini:last-child {
+    grid-column: auto;
+  }
+  .map-only-grid > .map-heatmap-card {
+    min-height: 560px !important;
+  }
+  .map-only-grid .heatmap-brazil,
+  .map-only-grid .heatmap-brazil svg {
+    min-height: 420px !important;
+  }
+}

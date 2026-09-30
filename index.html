@@ -542,47 +542,12 @@
               </div>
             </div>
 
-            <div class="map-onsupply-grid">
-              <article class="onsupply-card total-card total-done">
-                <div class="onsupply-card-title">Total de entregas realizadas <span>ⓘ</span></div>
-                <strong id="mapCompletedTotal">0</strong>
-              </article>
-              <article class="onsupply-card total-card total-pending">
-                <div class="onsupply-card-title">Total de entregas pendentes <span>ⓘ</span></div>
-                <strong id="mapPendingTotal">0</strong>
-              </article>
-
-              <article class="onsupply-card gauge-panel gauge-delivered">
-                <div class="onsupply-card-title">% Performance de Entrega <span>ⓘ</span></div>
-                <div id="mapPerformanceGauge" class="map-speedometer"></div>
-              </article>
-              <article class="onsupply-card mini-stat delivered-on-time">
-                <div class="onsupply-card-title">No prazo <span>ⓘ</span></div>
-                <strong id="mapDeliveredOnTime">0</strong>
-              </article>
-              <article class="onsupply-card mini-stat delivered-late">
-                <div class="onsupply-card-title">Atrasadas <span>ⓘ</span></div>
-                <strong id="mapDeliveredLate">0</strong>
-              </article>
-
-              <article class="onsupply-card gauge-panel gauge-pending">
-                <div class="onsupply-card-title">% Pendentes no prazo <span>ⓘ</span></div>
-                <div id="mapPendingGauge" class="map-speedometer"></div>
-              </article>
-              <article class="onsupply-card mini-stat pending-on-time">
-                <div class="onsupply-card-title">No prazo <span>ⓘ</span></div>
-                <strong id="mapPendingOnTime">0</strong>
-              </article>
-              <article class="onsupply-card mini-stat pending-late">
-                <div class="onsupply-card-title">Atrasadas <span>ⓘ</span></div>
-                <strong id="mapPendingLate">0</strong>
-              </article>
-
+            <div class="map-onsupply-grid map-only-grid">
               <article class="onsupply-card map-heatmap-card">
                 <div class="map-card-heading">
                   <div>
                     <h3 id="mapFocusTitle">Mapa operacional do Brasil</h3>
-                    <small id="mapFocusSub">Selecione uma região para ampliar os estados e os dados do mapa.</small>
+                    <small id="mapFocusSub">Clique em uma região para abrir o mapa regional e ver as cidades.</small>
                   </div>
                   <span id="mapScopeBadge">Brasil</span>
                 </div>
@@ -592,17 +557,12 @@
                   <button class="map-zoom-btn" id="mapZoomIn" type="button" aria-label="Aumentar zoom">+</button>
                   <button class="map-zoom-btn reset" id="mapZoomReset" type="button">Reset</button>
                 </div>
-                <div id="brazilMap" class="brazil-map heatmap-brazil" aria-label="Mapa de calor operacional do Brasil"></div>
-              </article>
-
-              <article class="onsupply-card evolution-card">
-                <div class="onsupply-card-title">Evolução da Performance de Entrega <span>ⓘ</span></div>
-                <div id="mapEvolutionChart" class="map-evolution-chart"></div>
+                <div id="brazilMap" class="brazil-map heatmap-brazil" aria-label="Mapa operacional dinâmico"></div>
               </article>
             </div>
 
-            <div class="map-ai-row">
-              <article class="onsupply-card region-panel-mini">
+            <div class="map-ai-row map-info-row">
+              <article class="onsupply-card region-panel-mini map-selection-summary">
                 <div class="panel-header compact">
                   <div>
                     <h3 id="regionPanelTitle">Todas as regiões</h3>
@@ -611,6 +571,16 @@
                 </div>
                 <div id="regionSummary" class="region-summary"></div>
                 <div id="mapStateBreakdown" class="map-state-breakdown" aria-label="Resumo por estado"></div>
+              </article>
+
+              <article class="onsupply-card region-panel-mini map-city-panel">
+                <div class="panel-header compact">
+                  <div>
+                    <h3>Cidades do mapa</h3>
+                    <small>Volume, atrasos e ocorrências conforme a região/status selecionados.</small>
+                  </div>
+                </div>
+                <div id="mapCityBreakdown" class="map-city-breakdown" aria-label="Resumo por cidade"></div>
               </article>
               <article class="onsupply-card region-panel-mini">
                 <div class="panel-header compact"><h3>Monitor IA • Alertas do mapa</h3></div>
