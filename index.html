@@ -66,6 +66,7 @@
             <small id="nextUpdate">próxima: --:--</small>
           </div>
           <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema">☾ Tema escuro</button>
+          <button class="btn" id="compactToggle" type="button" aria-pressed="false">Compactar Informações</button>
           <button class="btn btn-primary" id="refreshBtn" type="button">⟳ Atualizar agora</button>
         </div>
       </header>
@@ -469,13 +470,51 @@
                 <label><input type="checkbox" class="report-option" value="transporters"> Transportadores</label>
                 <label><input type="checkbox" class="report-option" value="details"> Tabela detalhada</label>
               </div>
+              <div class="dynamic-info-controls" aria-label="Informação Dinâmica">
+                <div>
+                  <h4>Informação Dinâmica</h4>
+                  <small>Selecione duas informações para montar um terceiro gráfico cruzado com insights em tempo real.</small>
+                </div>
+                <label>
+                  <span>Informação 1</span>
+                  <select id="dynamicMetricA" class="dynamic-select">
+                    <option value="status">Status operacional</option>
+                    <option value="uf">UF</option>
+                    <option value="performance">Performance ONTIME</option>
+                    <option value="occurrence">Ocorrência</option>
+                    <option value="return">Devolução</option>
+                    <option value="transporter">Transportador</option>
+                    <option value="vehicle">Tipo de veículo</option>
+                    <option value="month">Mês</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Informação 2</span>
+                  <select id="dynamicMetricB" class="dynamic-select">
+                    <option value="uf">UF</option>
+                    <option value="status">Status operacional</option>
+                    <option value="performance">Performance ONTIME</option>
+                    <option value="occurrence">Ocorrência</option>
+                    <option value="return">Devolução</option>
+                    <option value="transporter">Transportador</option>
+                    <option value="vehicle">Tipo de veículo</option>
+                    <option value="month">Mês</option>
+                  </select>
+                </label>
+              </div>
               <div class="filter-actions report-actions">
                 <button class="btn btn-primary" id="exportDynamicReportBtn" type="button">Exportar relatório</button>
+                <small class="export-hint">Escolha PDF do painel ou XLSX em tabela.</small>
               </div>
             </article>
             <article class="panel-card report-preview-card">
               <div class="panel-header"><div><h3>Dashboard rápido</h3><small>Prévia interativa gerada em tempo real.</small></div></div>
               <div id="reportPreview" class="report-preview"></div>
+              <div class="dynamic-info-panel">
+                <div class="panel-header compact"><div><h3>Gráfico cruzado dinâmico</h3><small>Confronto automático das duas informações selecionadas.</small></div></div>
+                <div id="dynamicInfoChart" class="dynamic-cross-chart"></div>
+                <div id="dynamicInfoInsights" class="insight-list dynamic-insights"></div>
+              </div>
             </article>
           </div>
         </section>
@@ -635,6 +674,41 @@
       <button class="modal-close" id="modalClose" type="button" aria-label="Fechar">×</button>
     </div>
     <div id="modalBody" class="modal-body"></div>
+  </dialog>
+
+  <dialog class="choice-modal" id="exportReportDialog" aria-labelledby="exportReportTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">Exportação do relatório</p>
+        <h2 id="exportReportTitle">Como deseja exportar?</h2>
+      </div>
+      <button class="modal-close" id="exportReportClose" type="button" aria-label="Fechar">×</button>
+    </div>
+    <div class="export-choice-grid">
+      <button class="export-choice" id="exportReportPdfBtn" type="button">
+        <strong>PDF</strong>
+        <span>Gera uma visão de impressão com a imagem/visual do painel de gráficos para salvar como PDF.</span>
+      </button>
+      <button class="export-choice" id="exportReportXlsxBtn" type="button">
+        <strong>XLSX</strong>
+        <span>Gera uma planilha Excel com as tabelas e bases conforme os blocos selecionados.</span>
+      </button>
+    </div>
+  </dialog>
+
+  <dialog class="detail-modal occurrence-detail-modal" id="occurrenceDetailModal">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">Ocorrências filtradas</p>
+        <h2 id="occurrenceDetailTitle">Descrição da ocorrência</h2>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-small" id="occurrenceDetailExport" type="button">Exportar XLSX</button>
+        <button class="btn btn-small" id="occurrenceDetailPrint" type="button">Imprimir</button>
+        <button class="modal-close" id="occurrenceDetailClose" type="button" aria-label="Fechar">×</button>
+      </div>
+    </div>
+    <div id="occurrenceDetailBody" class="modal-body"></div>
   </dialog>
 
   <script src="app.js"></script>
