@@ -6777,3 +6777,63 @@ body[data-theme="dark"] .city-bubble-label {
 .map-secondary-row > .region-panel-mini:last-child {
   grid-column: auto !important;
 }
+
+/* Ajustes do mapa por UF: posição fiel dos estados, animação de aproximação e cards clicáveis */
+.geo-state-label {
+  fill: #07141f;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: .02em;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(255,255,255,.9);
+  stroke-width: 4px;
+}
+.geo-state-label.active,
+.state-focus-label.active {
+  fill: #087351;
+}
+.heatmap-brazil.map-region-opening svg {
+  transform-origin: center center;
+  animation: mapRegionOpenZoom .34s ease both;
+}
+@keyframes mapRegionOpenZoom {
+  0% { transform: scale(1); opacity: 1; filter: none; }
+  56% { transform: scale(1.08); opacity: .92; filter: saturate(1.16) brightness(1.04); }
+  100% { transform: scale(1.01); opacity: 1; filter: none; }
+}
+.region-svg-cards .city-svg-detail {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 999px;
+  color: #17324a;
+  background: rgba(255,255,255,.86);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.region-svg-cards .city-svg-detail:hover {
+  color: #06141f;
+  background: rgba(72,255,155,.7);
+}
+.region-svg-cards .city-svg-detail b {
+  color: #087351;
+}
+body[data-theme="dark"] .geo-state-label {
+  fill: #f4f9ff;
+  stroke: rgba(4,16,26,.88);
+}
+body[data-theme="dark"] .region-svg-cards .city-svg-detail {
+  color: #f4f9ff;
+  background: rgba(5,18,29,.78);
+}
+body[data-theme="dark"] .region-svg-cards .city-svg-detail b {
+  color: #8fffc1;
+}
+.simplified-state-label {
+  font-size: 11px;
+}
