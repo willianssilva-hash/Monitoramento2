@@ -542,37 +542,41 @@
               </div>
             </div>
 
-            <div class="map-onsupply-grid map-only-grid">
-              <article class="onsupply-card map-heatmap-card">
-                <div class="map-card-heading">
-                  <div>
-                    <h3 id="mapFocusTitle">Mapa operacional do Brasil</h3>
-                    <small id="mapFocusSub">Clique em uma região para abrir o mapa regional e ver as cidades.</small>
+            <div class="map-main-split">
+              <aside class="map-side-info" aria-label="Informações dinâmicas do mapa">
+                <article class="onsupply-card region-panel-mini map-selection-summary">
+                  <div class="panel-header compact">
+                    <div>
+                      <h3 id="regionPanelTitle">Todas as regiões</h3>
+                      <small id="regionPanelSub">Resumo da seleção atual.</small>
+                    </div>
                   </div>
-                  <span id="mapScopeBadge">Brasil</span>
-                </div>
-                <div class="map-zoom-controls" aria-label="Controles de zoom do mapa">
-                  <button class="map-zoom-btn" id="mapZoomOut" type="button" aria-label="Diminuir zoom">−</button>
-                  <span id="mapZoomLevel">100%</span>
-                  <button class="map-zoom-btn" id="mapZoomIn" type="button" aria-label="Aumentar zoom">+</button>
-                  <button class="map-zoom-btn reset" id="mapZoomReset" type="button">Reset</button>
-                </div>
-                <div id="brazilMap" class="brazil-map heatmap-brazil" aria-label="Mapa operacional dinâmico"></div>
-              </article>
+                  <div id="regionSummary" class="region-summary"></div>
+                  <div id="mapStateBreakdown" class="map-state-breakdown" aria-label="Resumo por estado"></div>
+                </article>
+              </aside>
+
+              <div class="map-onsupply-grid map-only-grid map-main-panel">
+                <article class="onsupply-card map-heatmap-card">
+                  <div class="map-card-heading">
+                    <div>
+                      <h3 id="mapFocusTitle">Mapa operacional do Brasil</h3>
+                      <small id="mapFocusSub">Clique em uma região para abrir o mapa regional e ver as cidades.</small>
+                    </div>
+                    <span id="mapScopeBadge">Brasil</span>
+                  </div>
+                  <div class="map-zoom-controls" aria-label="Controles de zoom do mapa">
+                    <button class="map-zoom-btn" id="mapZoomOut" type="button" aria-label="Diminuir zoom">−</button>
+                    <span id="mapZoomLevel">100%</span>
+                    <button class="map-zoom-btn" id="mapZoomIn" type="button" aria-label="Aumentar zoom">+</button>
+                    <button class="map-zoom-btn reset" id="mapZoomReset" type="button">Reset</button>
+                  </div>
+                  <div id="brazilMap" class="brazil-map heatmap-brazil" aria-label="Mapa operacional dinâmico"></div>
+                </article>
+              </div>
             </div>
 
-            <div class="map-ai-row map-info-row">
-              <article class="onsupply-card region-panel-mini map-selection-summary">
-                <div class="panel-header compact">
-                  <div>
-                    <h3 id="regionPanelTitle">Todas as regiões</h3>
-                    <small id="regionPanelSub">Resumo da seleção atual.</small>
-                  </div>
-                </div>
-                <div id="regionSummary" class="region-summary"></div>
-                <div id="mapStateBreakdown" class="map-state-breakdown" aria-label="Resumo por estado"></div>
-              </article>
-
+            <div class="map-ai-row map-info-row map-secondary-row">
               <article class="onsupply-card region-panel-mini map-city-panel">
                 <div class="panel-header compact">
                   <div>
@@ -582,7 +586,7 @@
                 </div>
                 <div id="mapCityBreakdown" class="map-city-breakdown" aria-label="Resumo por cidade"></div>
               </article>
-              <article class="onsupply-card region-panel-mini">
+              <article class="onsupply-card region-panel-mini map-alert-panel">
                 <div class="panel-header compact"><h3>Monitor IA • Alertas do mapa</h3></div>
                 <div id="mapAiAlerts" class="insight-list"></div>
               </article>
