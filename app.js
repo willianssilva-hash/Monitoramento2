@@ -186,7 +186,7 @@ async function loadData({ manual = false } = {}) {
     STATE.errors = ['Não foi possível carregar as planilhas pelo navegador neste momento. Exibindo base demonstrativa para manter o painel navegável. Verifique se as publicações Google continuam públicas.'];
   }
   STATE.rawRecords = records;
-  STATE.records = records.map(normalizeRecord).filter((row) => row && !isRetiraContract(row));
+  STATE.records = records.map(normalizeRecord).filter((row) => row && !isRetiraContract(row) && hasDocumentNumber(row));
   STATE.lastUpdated = new Date(); STATE.nextRefreshAt = new Date(Date.now() + CONFIG.refreshIntervalMs); STATE.isLoading = false;
   populateDynamicFilters(); applyFiltersAndRender(); fetchWeather();
   if (STATE.errors.length) { setLoadStatus(STATE.isDemo ? 'error' : 'ok', STATE.isDemo ? 'Modo demonstrativo' : 'Atualizado com alertas'); showBanner(STATE.errors.join(' • '), STATE.isDemo ? 'error' : 'warn'); }
@@ -475,6 +475,12 @@ function isTextualReturnReason(value) {
   return /[a-zA-ZÀ-ÿ]/.test(text);
 }
 function isRetiraContract(row) { return /\bretira\b/.test(normalizeText(row && row.tpContratacao)); }
+function hasDocumentNumber(row) {
+  const of = cleanLabel(row && row.of);
+  const nf = cleanLabel(row && row.notaFiscal);
+  const valid = (value) => Boolean(value && !/^(0+|nao|não|sem|n\/a|-+)$/i.test(normalizeText(value)));
+  return valid(of) || valid(nf);
+}
 function normalizeReturnType(row) {
   const text = normalizeText([row.tipoDevolucao, row.devolucao].filter(Boolean).join(' '));
   if (/\bparcial\b/.test(text)) return 'Parcial';
@@ -682,7 +688,12 @@ function renderPerformance() {
     kpiCard('Fora do prazo', formatInteger(late), `${percent(late, eligible.length)} da base ONTIME`, '⚠', 'danger', 'delayed'),
     kpiCard('Em trânsito não contado', formatInteger(notCountedTransit), 'Dentro do prazo ou sem fechamento', '🚚', 'info', 'transit')
   ].join('');
-  document.getElementById('ontimeGauge').innerHTML = `<div class="gauge-ring" style="--pct:${rate}"><div class="gauge-content"><strong>${rate}%</strong><span>ONTIME</span></div></div>`;
+  document.getElementById('ontimeGauge').innerHTML = performanceGaugeHtml(rate, 'ONTIME', [
+    ['Notas elegíveis', eligible.length, 'info'],
+    ['Dentro do prazo', ontime, 'success'],
+    ['Fora do prazo', late, 'danger'],
+    ['Em trânsito não contado', notCountedTransit, 'warn']
+  ]);
   renderPerformanceBars('performanceSource', groupBy(eligible, (row) => row.source || 'Sem origem'), 'origem');
   renderPerformanceBars('performanceUf', groupBy(eligible, (row) => row.uf || 'Sem UF'), 'UF');
   renderRecordsTable('lateTable', rows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false)), { limit: 300, empty: 'Nenhuma carga fora do prazo nos filtros.' });
@@ -702,10 +713,19 @@ function renderConsolidatedPerformance(rows) {
     kpiCard('Em trânsito não contado', formatInteger(transit), 'Sem fechamento de performance', '🚚', 'info')
   ].join('');
   const gauge = document.getElementById('consolidatedGauge');
-  if (gauge) gauge.innerHTML = `<div class="gauge-ring" style="--pct:${rate}"><div class="gauge-content"><strong>${rate}%</strong><span>BA + SP</span></div></div>`;
+  if (gauge) gauge.innerHTML = performanceGaugeHtml(rate, 'BA + SP', [
+    ['Notas elegíveis', eligible.length, 'info'],
+    ['Dentro do prazo', ontime, 'success'],
+    ['Fora do prazo', late, 'danger'],
+    ['Em trânsito não contado', transit, 'warn']
+  ]);
   renderPerformanceBars('consolidatedBySource', groupBy(eligible, (row) => row.source || 'Sem origem'), 'origem');
   renderPerformanceBars('consolidatedByUf', groupBy(eligible, (row) => row.uf || 'Sem UF'), 'UF');
   renderRecordsTable('consolidatedLateTable', rows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false)), { limit: 300, empty: 'Nenhuma carga fora do prazo no consolidado.' });
+}
+function performanceGaugeHtml(rate, label, stats) {
+  const statHtml = stats.map(([name, value, type]) => `<div class="gauge-stat ${escapeHtml(type || '')}" data-summary="${escapeHtml(`<strong>${name}</strong><br>${formatInteger(value)} registro(s)`)}"><span>${escapeHtml(name)}</span><strong>${formatInteger(value)}</strong></div>`).join('');
+  return `<div class="performance-gauge-card" data-summary="${escapeHtml(`<strong>${label}</strong><br>${rate}% dentro do prazo`)}"><div class="gauge-ring" style="--pct:${rate}"><div class="gauge-content"><strong>${rate}%</strong><span>${escapeHtml(label)}</span></div></div><div class="gauge-stat-list">${statHtml}</div></div>`;
 }
 function renderPerformanceBars(containerId, grouped, labelType) {
   const entries = Object.entries(grouped).map(([label, rows]) => {
