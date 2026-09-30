@@ -219,16 +219,19 @@ async function loadData({ manual = false } = {}) {
   STATE.isLoading = true;
   snapshotPromise = null;
   if (autoRefreshTimer) { window.clearTimeout(autoRefreshTimer); autoRefreshTimer = null; }
-  setLoadStatus('loading', manual ? 'Atualizando manualmente...' : 'Atualizando planilhas...');
+  setLoadStatus('loading', manual ? 'Consultando planilhas agora...' : 'Consultando planilhas ao vivo...');
   showBanner('', '');
   try {
     const sourceResults = await Promise.all(CONFIG.sources.map(async (source) => {
-      try { return { source, records: await fetchSource(source) }; }
+      try { return { source, records: await fetchSource(source, { preferLive: true }) }; }
       catch (error) { return { source, records: [], error }; }
     }));
     if (seq !== loadSequence) return;
     let records = sourceResults.flatMap((item) => item.records);
-    STATE.errors = sourceResults.filter((item) => item.error).map((item) => `${item.source.short}: ${item.error.message || item.error}`);
+    STATE.errors = [
+      ...sourceResults.filter((item) => item.error).map((item) => `${item.source.short}: ${item.error.message || item.error}`),
+      ...sourceResults.map((item) => item.records && item.records.__refreshWarning).filter(Boolean)
+    ];
     STATE.isDemo = false;
     if (!records.length) {
       records = buildDemoRecords(); STATE.isDemo = true;
@@ -258,23 +261,39 @@ function scheduleAutoRefresh() {
   autoRefreshTimer = window.setTimeout(() => loadData({ manual: false }), CONFIG.refreshIntervalMs);
 }
 
-async function fetchSource(source) {
+async function fetchSource(source, { preferLive = true } = {}) {
   const errors = [];
-
-  try {
-    const snapshotRecords = await fetchSnapshotSource(source);
-    if (snapshotRecords.length) return snapshotRecords;
-    errors.push('snapshot local sem registros');
-  } catch (error) {
-    errors.push(`snapshot: ${error.message || error}`);
-  }
-
-  try {
+  const tryPublished = async () => {
     const publishedRecords = await fetchPublishedData(source);
     if (publishedRecords.length) return publishedRecords;
-    errors.push('publicação da planilha sem registros');
-  } catch (error) {
-    errors.push(`publicação: ${error.message || error}`);
+    throw new Error('publicação da planilha sem registros');
+  };
+  const trySnapshot = async () => {
+    const snapshotRecords = await fetchSnapshotSource(source);
+    if (snapshotRecords.length) return snapshotRecords;
+    throw new Error('snapshot local sem registros');
+  };
+  const attempts = preferLive
+    ? [
+      ['publicação', tryPublished],
+      ['snapshot', trySnapshot]
+    ]
+    : [
+      ['snapshot', trySnapshot],
+      ['publicação', tryPublished]
+    ];
+
+  for (const [label, attempt] of attempts) {
+    try {
+      const records = await attempt();
+      if (label === 'snapshot' && preferLive && errors.length) {
+        const warning = `${source.short}: atualização ao vivo indisponível; usando último snapshot publicado. ${errors.slice(-1)[0] || ''}`;
+        try { Object.defineProperty(records, '__refreshWarning', { value: warning, enumerable: false }); }
+        catch (_) { records.__refreshWarning = warning; }
+      }
+      return records;
+    }
+    catch (error) { errors.push(`${label}: ${error.message || error}`); }
   }
 
   throw new Error(errors.filter(Boolean).join(' | ') || 'Não foi possível consultar a planilha publicada.');
@@ -317,11 +336,21 @@ async function fetchSnapshotSource(source) {
 
 async function fetchPublishedData(source) {
   const base = `https://docs.google.com/spreadsheets/d/e/${source.pubId}`;
+  const errors = [];
+
+  try {
+    const pubhtml = await fetchTextSmart(source.url);
+    const records = await fetchBestPublishedSheet(source, base, pubhtml, errors);
+    if (records.length) return records;
+    errors.push('nenhum candidato publicado com linhas úteis');
+  } catch (error) {
+    errors.push(`pubhtml: ${error.message || String(error)}`);
+  }
+
   const candidates = [
     { type: 'csv', url: `${base}/pub?output=csv` },
     { type: 'html', url: source.url }
   ];
-  const errors = [];
   for (const candidate of candidates) {
     try {
       const text = await fetchTextSmart(candidate.url);
@@ -329,17 +358,106 @@ async function fetchPublishedData(source) {
       if (records.length) return records;
       errors.push(`${candidate.type} sem linhas`);
     } catch (error) {
-      errors.push(error.message || String(error));
+      errors.push(`${candidate.type}: ${error.message || String(error)}`);
     }
   }
-  throw new Error(errors.filter(Boolean).slice(-3).join(' | ') || 'falha ao ler publicação');
+  throw new Error(errors.filter(Boolean).slice(-6).join(' | ') || 'falha ao ler publicação');
+}
+
+async function fetchBestPublishedSheet(source, base, pubhtml, errors = []) {
+  const { ordered, targetGids } = discoverPublishedGids(pubhtml);
+  const seen = new Set();
+  const collectCsvCandidates = async (gids) => {
+    const candidates = [];
+    for (const gid of gids) {
+      const url = `${base}/pub?gid=${gid}&single=true&output=csv`;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      try {
+        const records = parseCsvRecords(await fetchTextSmart(url), source);
+        if (records.length) {
+          const score = [(targetGids.has(gid)) ? 1 : 0, ...publishedCandidateScore(records)];
+          candidates.push({ score, records, origin: `csv gid ${gid}` });
+        } else errors.push(`csv gid ${gid} sem dados`);
+      } catch (error) {
+        errors.push(`csv gid ${gid}: ${error.message || String(error)}`);
+      }
+    }
+    return candidates;
+  };
+  const selectBestCandidate = (candidates) => {
+    candidates.sort((a, b) => compareScores(b.score, a.score));
+    const selected = candidates[0];
+    if (selected) errors.push(`selecionado ${selected.origin}: ${selected.records.length} linhas`);
+    return selected ? selected.records : [];
+  };
+
+  const targetCandidates = targetGids.size ? await collectCsvCandidates(ordered.filter((gid) => targetGids.has(gid))) : [];
+  if (targetCandidates.length) return selectBestCandidate(targetCandidates);
+
+  const fallbackGids = targetGids.size ? ordered.filter((gid) => !targetGids.has(gid)).slice(0, 4) : ordered.slice(0, 4);
+  if (!fallbackGids.includes('0')) fallbackGids.push('0');
+  const candidates = await collectCsvCandidates(fallbackGids);
+  const defaultCsvUrl = `${base}/pub?output=csv`;
+  if (!seen.has(defaultCsvUrl)) {
+    seen.add(defaultCsvUrl);
+    try {
+      const records = parseCsvRecords(await fetchTextSmart(defaultCsvUrl), source);
+      if (records.length) candidates.push({ score: [0, ...publishedCandidateScore(records)], records, origin: 'csv padrão' });
+      else errors.push('csv padrão sem dados');
+    } catch (error) {
+      errors.push(`csv padrão: ${error.message || String(error)}`);
+    }
+  }
+
+  try {
+    const htmlRecords = parseHtmlRecords(pubhtml, source);
+    if (htmlRecords.length) candidates.push({ score: [0, ...publishedCandidateScore(htmlRecords)], records: htmlRecords, origin: 'html publicado' });
+    else errors.push('html publicado sem tabela útil');
+  } catch (error) {
+    errors.push(`html publicado: ${error.message || String(error)}`);
+  }
+
+  return selectBestCandidate(candidates);
+}
+
+function discoverPublishedGids(pubhtml) {
+  const ordered = [];
+  const targetGids = new Set();
+  const text = String(pubhtml || '');
+  const regex = /gid=(\d+)/g;
+  let match;
+  while ((match = regex.exec(text))) {
+    const gid = match[1];
+    const windowText = text.slice(Math.max(0, match.index - 700), match.index + 700);
+    if (/acompanh/.test(normalizeText(windowText))) targetGids.add(gid);
+    if (!ordered.includes(gid)) ordered.push(gid);
+  }
+  if (!ordered.includes('0')) ordered.push('0');
+  return { ordered: ordered.filter((gid, index) => ordered.indexOf(gid) === index), targetGids };
+}
+
+function publishedCandidateScore(records) {
+  const fields = records[0] ? Object.keys(records[0]).filter((key) => !key.startsWith('__')) : [];
+  const known = fields.reduce((score, field) => score + (isKnownHeader(field) ? 1 : 0), 0);
+  return [fields.length, known, Math.min(records.length, 20000), records.length];
+}
+
+function compareScores(a, b) {
+  const max = Math.max(a.length, b.length);
+  for (let index = 0; index < max; index += 1) {
+    const diff = (a[index] || 0) - (b[index] || 0);
+    if (diff) return diff;
+  }
+  return 0;
 }
 
 async function fetchTextSmart(url) {
+  const freshUrl = appendCacheBuster(url);
   const urls = [
-    url,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+    freshUrl,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(freshUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(freshUrl)}`
   ];
   let lastError = null;
   for (const target of urls) {
@@ -360,6 +478,10 @@ async function fetchTextSmart(url) {
     }
   }
   throw lastError || new Error('falha de rede');
+}
+function appendCacheBuster(url) {
+  const separator = String(url || '').includes('?') ? '&' : '?';
+  return `${url}${separator}_=${Date.now()}`;
 }
 
 function parseCsvRecords(csvText, source) {
