@@ -764,16 +764,20 @@ function renderMonthlyComboDashboard(containerId, trend) {
 
 function buildMonthlyTrend(rows) {
   const today = new Date();
-  const currentMonthLimit = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
   const validRows = rows.filter((row) => {
-    if (!row.referenceDate) return false;
-    const rowMonth = new Date(row.referenceDate.getFullYear(), row.referenceDate.getMonth(), 1).getTime();
-    return rowMonth <= currentMonthLimit;
+    const ref = trendMonthReference(row, currentYear);
+    if (!ref) return false;
+    return ref.year < currentYear || (ref.year === currentYear && ref.month <= currentMonth);
   });
-  const grouped = groupBy(validRows, (row) => `${row.referenceDate.getFullYear()}-${String(row.referenceDate.getMonth() + 1).padStart(2, '0')}`);
+  const grouped = groupBy(validRows, (row) => {
+    const ref = trendMonthReference(row, currentYear);
+    return `${ref.year}-${String(ref.month).padStart(2, '0')}`;
+  });
   return Object.entries(grouped)
     .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-8)
+    .slice(-12)
     .map(([key, list], index) => {
       const [year, month] = key.split('-').map(Number);
       const eligible = list.filter((row) => row.performanceEligible);
@@ -794,6 +798,18 @@ function buildMonthlyTrend(rows) {
         lateRate: eligible.length ? Math.round(((eligible.length - ontime) / eligible.length) * 100) : 0
       };
     });
+}
+function trendMonthReference(row, fallbackYear) {
+  const explicitMonth = Number(row.monthNumber || 0);
+  if (explicitMonth >= 1 && explicitMonth <= 12) {
+    const sameMonthDates = [row.referenceDate, row.emissaoDate, row.saidaDate, row.previsaoEntregaDate, row.chegadaClienteDate]
+      .filter(Boolean)
+      .filter((date) => date.getMonth() + 1 === explicitMonth);
+    const year = sameMonthDates[0]?.getFullYear() || fallbackYear;
+    return { year, month: explicitMonth };
+  }
+  if (!row.referenceDate) return null;
+  return { year: row.referenceDate.getFullYear(), month: row.referenceDate.getMonth() + 1 };
 }
 
 function renderOperationProfile(rows) {
