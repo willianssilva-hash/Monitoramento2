@@ -58,7 +58,7 @@ const STATE = {
   lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', mapStatus: 'all', weather: {},
   brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '', mapZoom: 1, mapPanX: 0, mapPanY: 0, mapDragging: false, mapDragStart: null, tableSorts: {},
   monitorMemory: { totalRequests: 0, topics: {}, lastQuestions: [], insights: [] }, monitorLastSignature: '', occurrenceDetailRows: [], occurrenceDetailLabel: '',
-  chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
+  chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicChartType: 'bars', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
   filters: { from: '', to: '', month: 'all', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
@@ -83,7 +83,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function cacheDom() {
-  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
+  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
@@ -726,40 +726,40 @@ function renderMonthlyComboDashboard(containerId, trend) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!trend.length) { container.innerHTML = emptyState('Sem datas suficientes para evolução.'); return; }
-  const width = 720, height = 300, padX = 46, padTop = 30, padBottom = 56;
+  const width = 720, height = 300, padX = 46, padTop = 30, padBottom = 58;
   const chartHeight = height - padTop - padBottom;
-  const max = Math.max(1, ...trend.map((item) => Math.max(item.total, item.delivered, item.delayed)));
   const slot = (width - padX * 2) / trend.length;
-  const barWidth = Math.min(42, Math.max(18, slot * 0.48));
-  const y = (value) => padTop + chartHeight - ((value / max) * chartHeight);
-  const h = (value) => Math.max(value ? 3 : 0, ((value / max) * chartHeight));
-  const columns = trend.map((item, index) => {
-    const cx = padX + slot * index + slot / 2;
-    const totalH = h(item.total);
-    const deliveredH = h(item.delivered);
-    const delayedH = h(item.delayed);
-    const rateY = padTop + chartHeight - ((item.rate / 100) * chartHeight);
-    const summary = `<strong>${item.label}</strong><br>${formatInteger(item.total)} registro(s) no mês<br>${formatInteger(item.delivered)} entregues • ${formatInteger(item.delayed)} atraso(s)<br>${formatInteger(item.inTransit)} em trânsito • ${formatInteger(item.occurrences)} ocorrência(s)<br>ONTIME: ${item.rate}% em ${formatInteger(item.eligible)} elegíveis<br><small>Contabilização: data de referência do registro no mês exibido.</small>`;
+  const barWidth = Math.min(46, Math.max(22, slot * 0.50));
+  const yRate = (rate) => padTop + chartHeight - ((Math.max(0, Math.min(100, rate)) / 100) * chartHeight);
+  const hRate = (rate) => Math.max(rate ? 4 : 0, (Math.max(0, Math.min(100, rate)) / 100) * chartHeight);
+  const columns = trend.map((item) => {
+    const cx = padX + slot * item.index + slot / 2;
+    const rateH = hRate(item.rate);
+    const topY = padTop + chartHeight - rateH;
+    const lateY = yRate(item.lateRate);
+    const summary = `<strong>${escapeHtml(item.label)}</strong><br>ONTIME: ${item.rate}% (${formatInteger(item.ontime)} no prazo de ${formatInteger(item.eligible)} elegíveis)<br>Fora do prazo: ${formatInteger(item.delayed)} (${item.lateRate}%)<br>Total do mês: ${formatInteger(item.total)} registro(s)<br><small>Contabilização: percentual ONTIME por mês, usando notas elegíveis pela regra do painel.</small>`;
     return `<g class="monthly-column clickable" data-action="filterMonth" data-value="${escapeHtml(String(item.month))}" data-summary="${escapeHtml(summary)}">
-      <rect class="month-bar total" x="${(cx - barWidth / 2).toFixed(1)}" y="${y(item.total).toFixed(1)}" width="${barWidth.toFixed(1)}" height="${totalH.toFixed(1)}" rx="10"></rect>
-      <rect class="month-bar delivered" x="${(cx - barWidth / 2 + barWidth * 0.16).toFixed(1)}" y="${y(item.delivered).toFixed(1)}" width="${(barWidth * 0.68).toFixed(1)}" height="${deliveredH.toFixed(1)}" rx="8"></rect>
-      <rect class="month-bar delayed" x="${(cx + barWidth / 2 + 6).toFixed(1)}" y="${(padTop + chartHeight - delayedH).toFixed(1)}" width="${Math.max(6, barWidth * 0.22).toFixed(1)}" height="${delayedH.toFixed(1)}" rx="6"></rect>
-      <circle class="month-rate-dot ${item.rate >= 90 ? 'success' : item.rate >= 75 ? 'warn' : 'danger'}" cx="${cx.toFixed(1)}" cy="${rateY.toFixed(1)}" r="5"></circle>
-      <text class="month-value" x="${cx.toFixed(1)}" y="${(y(item.total) - 8).toFixed(1)}" text-anchor="middle">${formatInteger(item.total)}</text>
+      <rect class="month-bar rate-bg" x="${(cx - barWidth / 2).toFixed(1)}" y="${padTop.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${chartHeight.toFixed(1)}" rx="12"></rect>
+      <rect class="month-bar ontime" x="${(cx - barWidth / 2 + 5).toFixed(1)}" y="${topY.toFixed(1)}" width="${(barWidth - 10).toFixed(1)}" height="${rateH.toFixed(1)}" rx="10"></rect>
+      <circle class="month-rate-dot ${item.rate >= 90 ? 'success' : item.rate >= 75 ? 'warn' : 'danger'}" cx="${cx.toFixed(1)}" cy="${yRate(item.rate).toFixed(1)}" r="5"></circle>
+      <circle class="month-late-dot" cx="${(cx + barWidth / 2 + 8).toFixed(1)}" cy="${lateY.toFixed(1)}" r="4"></circle>
+      <text class="month-value" x="${cx.toFixed(1)}" y="${(topY - 8).toFixed(1)}" text-anchor="middle">${item.rate}%</text>
+      <text class="month-subvalue" x="${cx.toFixed(1)}" y="${(topY - 22).toFixed(1)}" text-anchor="middle">${formatInteger(item.eligible)}</text>
       <text class="month-label" x="${cx.toFixed(1)}" y="${height - 18}" text-anchor="middle">${escapeHtml(item.label)}</text>
     </g>`;
   }).join('');
-  const ratePoints = trend.map((item, index) => {
-    const cx = padX + slot * index + slot / 2;
-    const cy = padTop + chartHeight - ((item.rate / 100) * chartHeight);
+  const ratePoints = trend.map((item) => {
+    const cx = padX + slot * item.index + slot / 2;
+    const cy = yRate(item.rate);
     return `${cx.toFixed(1)},${cy.toFixed(1)}`;
   }).join(' ');
-  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução mensal interativa por colunas">
+  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução mensal do percentual ONTIME">
     <g class="monthly-grid"><path d="M${padX} ${padTop} H${width - padX}"></path><path d="M${padX} ${padTop + chartHeight / 2} H${width - padX}"></path><path d="M${padX} ${padTop + chartHeight} H${width - padX}"></path></g>
+    <text class="monthly-axis-label" x="${padX - 8}" y="${padTop + 4}" text-anchor="end">100%</text><text class="monthly-axis-label" x="${padX - 8}" y="${padTop + chartHeight / 2 + 4}" text-anchor="end">50%</text><text class="monthly-axis-label" x="${padX - 8}" y="${padTop + chartHeight + 4}" text-anchor="end">0%</text>
     <polyline class="month-rate-line" points="${ratePoints}"></polyline>
     ${columns}
   </svg>
-  <div class="monthly-legend"><span><i class="total"></i>Total</span><span><i class="delivered"></i>Entregues</span><span><i class="delayed"></i>Atrasos</span><span><i class="rate"></i>ONTIME</span><em>Clique no mês para filtrar/desfazer.</em></div>`;
+  <div class="monthly-legend"><span><i class="rate"></i>% ONTIME</span><span><i class="total"></i>Notas elegíveis</span><span><i class="delayed"></i>% Fora do prazo</span><em>Clique no mês para filtrar/desfazer.</em></div>`;
 }
 
 function buildMonthlyTrend(rows) {
@@ -767,21 +767,24 @@ function buildMonthlyTrend(rows) {
   return Object.entries(grouped)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-8)
-    .map(([key, list]) => {
+    .map(([key, list], index) => {
       const [year, month] = key.split('-').map(Number);
       const eligible = list.filter((row) => row.performanceEligible);
       const ontime = eligible.filter((row) => row.ontimeStatus === true).length;
+      const delayed = list.filter((row) => row.delayed).length;
       return {
-        key, month, year,
-        label: `${String(month).padStart(2, '0')}/${String(year).slice(-2)}`,
+        key, month, year, index,
+        label: `${monthShortName(month)}/${String(year).slice(-2)}`,
         total: list.length,
         delivered: list.filter((row) => row.delivered).length,
-        delayed: list.filter((row) => row.delayed).length,
+        delayed,
         inTransit: list.filter((row) => row.transit).length,
         occurrences: list.filter((row) => row.hasOccurrence).length,
         returns: list.filter((row) => row.hasReturn).length,
         eligible: eligible.length,
-        rate: eligible.length ? Math.round((ontime / eligible.length) * 100) : 0
+        ontime,
+        rate: eligible.length ? Math.round((ontime / eligible.length) * 100) : 0,
+        lateRate: eligible.length ? Math.round(((eligible.length - ontime) / eligible.length) * 100) : 0
       };
     });
 }
@@ -1052,8 +1055,17 @@ function getDynamicDimensionDefinitions() {
     return: { label: 'Devolução', measure: 'Tipo/motivo de devolução informado na planilha.', getter: (row) => row.hasReturn ? (cleanLabel(row.returnReason) || row.returnType || 'Com devolução') : 'Sem devolução' },
     transporter: { label: 'Transportador', measure: 'Transportador informado na planilha, com Rodocolor unificado.', getter: (row) => normalizeTransporterLabel(row.transportadora) },
     vehicle: { label: 'Tipo de veículo', measure: 'Tipo de veículo informado na planilha, mantendo Truck, Carreta e Bitrem.', getter: (row) => normalizeVehicleTypeForProfile(row.tpVeiculo) || 'Outros/ignorado' },
-    month: { label: 'Mês', measure: 'Mês da planilha ou data de referência do registro.', getter: (row) => row.monthNumber ? String(row.monthNumber).padStart(2, '0') : 'Sem mês' }
+    month: { label: 'Mês', measure: 'Mês da planilha ou data de referência do registro.', getter: (row) => row.monthNumber ? monthShortName(row.monthNumber) : 'Sem mês', sort: (a, b) => (monthNameToNumber(a) || 99) - (monthNameToNumber(b) || 99) }
   };
+}
+function dynamicRecommendation(firstKey) {
+  const map = {
+    status: 'uf', uf: 'status', performance: 'uf', occurrence: 'uf', return: 'return' === firstKey ? 'uf' : 'status', transporter: 'performance', vehicle: 'performance', month: 'performance'
+  };
+  return map[firstKey] || 'uf';
+}
+function dynamicChartTypes() {
+  return [{ key: 'bars', label: 'Barras' }, { key: 'matrix', label: 'Matriz' }, { key: 'ranking', label: 'Ranking' }];
 }
 function renderDynamicTypeButtons() {
   const defs = getDynamicDimensionDefinitions();
@@ -1065,7 +1077,13 @@ function renderDynamicTypeButtons() {
   };
   render('a', DOM.dynamicTypeGroupA);
   render('b', DOM.dynamicTypeGroupB);
+  if (DOM.dynamicChartTypeGroup) DOM.dynamicChartTypeGroup.innerHTML = dynamicChartTypes().map((item) => `<button type="button" class="dynamic-type-btn ${STATE.dynamicChartType === item.key ? 'active' : ''}" data-action="dynamicChartType" data-value="${item.key}">${escapeHtml(item.label)}</button>`).join('');
+  if (DOM.dynamicSuggestion) {
+    const rec = defs[dynamicRecommendation(STATE.dynamicMetricA)] || defs.uf;
+    DOM.dynamicSuggestion.innerHTML = `Sugestão Monitor IA: combine <strong>${escapeHtml(defs[STATE.dynamicMetricA].label)}</strong> com <strong>${escapeHtml(rec.label)}</strong> para uma leitura mais útil.`;
+  }
 }
+
 function renderDynamicInfo(rows) {
   if (!DOM.dynamicInfoChart || !DOM.dynamicInfoInsights) return;
   const defs = getDynamicDimensionDefinitions();
@@ -1076,7 +1094,7 @@ function renderDynamicInfo(rows) {
   const dimA = { ...defs[keyA], key: keyA }, dimB = { ...defs[keyB], key: keyB };
   renderDynamicTypeButtons();
   const matrix = buildDynamicMatrix(rows, dimA, dimB);
-  DOM.dynamicInfoChart.innerHTML = dynamicMatrixHtml(matrix, dimA, dimB);
+  DOM.dynamicInfoChart.innerHTML = dynamicChartHtml(matrix, dimA, dimB);
   renderDynamicFilterChips(matrix, dimA, dimB);
   renderInsights('dynamicInfoInsights', buildDynamicInsights(matrix, dimA, dimB, rows));
 }
@@ -1091,10 +1109,14 @@ function buildDynamicMatrix(rows, dimA, dimB) {
   });
   const hiddenA = STATE.dynamicFiltersA || new Set();
   const hiddenB = STATE.dynamicFiltersB || new Set();
-  const allRows = Object.entries(groups).sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([label, item]) => ({ label, total: item.total, values: item.values }));
+  const sortLabels = (entries, dim, limit) => {
+    const sorted = entries.sort((a, b) => dim.sort ? dim.sort(a[0], b[0]) : b[1].total ? b[1].total - a[1].total : b[1] - a[1]);
+    return sorted.slice(0, limit);
+  };
+  const allRows = sortLabels(Object.entries(groups), dimA, 10).map(([label, item]) => ({ label, total: item.total, values: item.values }));
   const bTotals = {};
   allRows.forEach((item) => Object.entries(item.values).forEach(([label, value]) => { bTotals[label] = (bTotals[label] || 0) + value; }));
-  const allColumns = topEntries(bTotals, 8).map(([label]) => label);
+  const allColumns = (dimB.sort ? Object.entries(bTotals).sort(([a], [b]) => dimB.sort(a, b)) : topEntries(bTotals, 8)).slice(0, 8).map(([label]) => label);
   const visibleRows = allRows.filter((row) => !hiddenA.has(row.label));
   const visibleColumns = allColumns.filter((label) => !hiddenB.has(label));
   return { rows: visibleRows, columns: visibleColumns, allRows, allColumns };
@@ -1104,6 +1126,39 @@ function renderDynamicFilterChips(matrix, dimA, dimB) {
   const chipGroup = (axis, title, labels, hidden) => `<div class="dynamic-chip-group"><strong>${escapeHtml(title)}</strong>${labels.map((label) => `<button type="button" class="dynamic-filter-chip ${hidden.has(label) ? '' : 'active'}" data-action="dynamicQuickFilter" data-axis="${axis}" data-value="${escapeHtml(label)}">${escapeHtml(truncate(label, 24))}</button>`).join('')}</div>`;
   DOM.dynamicFilterChips.innerHTML = chipGroup('a', dimA.label, matrix.allRows.map((row) => row.label), STATE.dynamicFiltersA) + chipGroup('b', dimB.label, matrix.allColumns, STATE.dynamicFiltersB);
 }
+
+function dynamicChartHtml(matrix, dimA, dimB) {
+  if (STATE.dynamicChartType === 'matrix') return dynamicMatrixHtml(matrix, dimA, dimB);
+  if (STATE.dynamicChartType === 'ranking') return dynamicRankingHtml(matrix, dimA, dimB);
+  return dynamicBarsHtml(matrix, dimA, dimB);
+}
+function dynamicBarsHtml(matrix, dimA, dimB) {
+  if (!matrix.rows.length) return emptyState('Sem dados para cruzar as informações selecionadas. Reative botões do filtro rápido.');
+  const max = Math.max(1, ...matrix.rows.map((row) => row.total));
+  return `<div class="dynamic-bars-chart">${matrix.rows.map((row, index) => {
+    const width = Math.max(4, Math.round((row.total / max) * 100));
+    const topColumn = Object.entries(row.values).filter(([column]) => matrix.columns.includes(column)).sort((a, b) => b[1] - a[1])[0];
+    const extra = topColumn ? `Principal ${dimB.label}: ${topColumn[0]} (${formatInteger(topColumn[1])})` : 'Sem detalhamento';
+    const summary = `<strong>${escapeHtml(row.label)}</strong><br>${formatInteger(row.total)} registro(s)<br>${escapeHtml(extra)}<br><small>Contabilização: ${escapeHtml(dimA.measure)} cruzado com ${escapeHtml(dimB.measure)}</small>`;
+    return `<div class="dynamic-bar-item" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${row.label}`)}" data-summary="${escapeHtml(summary)}"><span>${escapeHtml(truncate(row.label, 30))}</span><i><em style="width:${width}%; background:${chartColor(row.label, index)}"></em><b>${formatInteger(row.total)}</b></i><small>${escapeHtml(extra)}</small></div>`;
+  }).join('')}</div>`;
+}
+function dynamicRankingHtml(matrix, dimA, dimB) {
+  const pairs = [];
+  matrix.rows.forEach((row) => matrix.columns.forEach((column) => {
+    const value = row.values[column] || 0;
+    if (value) pairs.push({ a: row.label, b: column, value });
+  }));
+  pairs.sort((a, b) => b.value - a.value);
+  if (!pairs.length) return emptyState('Sem combinações para o ranking atual.');
+  const max = Math.max(1, ...pairs.map((item) => item.value));
+  return `<div class="dynamic-ranking-chart">${pairs.slice(0, 12).map((item, index) => {
+    const width = Math.max(5, Math.round((item.value / max) * 100));
+    const summary = `<strong>${escapeHtml(item.a)} x ${escapeHtml(item.b)}</strong><br>${formatInteger(item.value)} registro(s)<br><small>Contabilização: ${escapeHtml(dimA.measure)} cruzado com ${escapeHtml(dimB.measure)}</small>`;
+    return `<div class="dynamic-ranking-row" data-action="chartPreview" data-value="${escapeHtml(`dynamic:${dimA.key}:${item.a}|||${dimB.key}:${item.b}`)}" data-summary="${escapeHtml(summary)}"><span>${escapeHtml(truncate(item.a, 22))}</span><small>${escapeHtml(truncate(item.b, 22))}</small><i><em style="width:${width}%; background:${chartColor(item.b, index)}"></em><b>${formatInteger(item.value)}</b></i></div>`;
+  }).join('')}</div>`;
+}
+
 function dynamicMatrixHtml(matrix, dimA, dimB) {
   if (!matrix.rows.length || !matrix.columns.length) return emptyState('Sem dados para cruzar as informações selecionadas. Reative botões do filtro rápido.');
   const max = Math.max(1, ...matrix.rows.map((row) => row.total));
@@ -1631,6 +1686,7 @@ function handleAction(action, value, element = null) {
   if (action === 'uf') { const next = value || 'all'; DOM.filterUf.value = DOM.filterUf.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'filterMonth') { const next = value || 'all'; DOM.filterMonth.value = DOM.filterMonth.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'dynamicAxis') return setDynamicAxis(element?.dataset.axis || 'a', value);
+  if (action === 'dynamicChartType') return setDynamicChartType(value);
   if (action === 'dynamicQuickFilter') return toggleDynamicQuickFilter(element?.dataset.axis || 'a', value);
   if (action === 'chartPreview') return openChartPreview(value);
   if (action === 'occurrenceDescription') openOccurrenceDescriptionDetail(value);
@@ -1639,9 +1695,18 @@ function handleAction(action, value, element = null) {
 function setDynamicAxis(axis, value) {
   const defs = getDynamicDimensionDefinitions();
   if (!defs[value]) return;
-  if (axis === 'b') STATE.dynamicMetricB = value; else STATE.dynamicMetricA = value;
+  if (axis === 'b') STATE.dynamicMetricB = value;
+  else {
+    STATE.dynamicMetricA = value;
+    STATE.dynamicMetricB = dynamicRecommendation(value);
+  }
   if (STATE.dynamicMetricA === STATE.dynamicMetricB) STATE.dynamicMetricB = STATE.dynamicMetricA === 'status' ? 'uf' : 'status';
   STATE.dynamicFiltersA = new Set(); STATE.dynamicFiltersB = new Set();
+  renderReportBuilder();
+}
+function setDynamicChartType(value) {
+  if (!dynamicChartTypes().some((item) => item.key === value)) return;
+  STATE.dynamicChartType = value;
   renderReportBuilder();
 }
 function toggleDynamicQuickFilter(axis, value) {
@@ -1866,7 +1931,14 @@ function renderTicker() {
   const delayed = rows.filter((row) => row.delayed), occurrencesToday = rows.filter((row) => row.hasOccurrence && isSameDay(row.referenceDate, today)), returns = rows.filter((row) => row.hasReturn);
   const items = [`🕒 ${sourceLabel} • atualizado ${STATE.lastUpdated ? formatDateTime(STATE.lastUpdated) : '--'} • ${formatInteger(rows.length)} registros`, `📅 ${formatInteger(todayAgendas.length)} agenda(s) para hoje`, `⏭️ ${formatInteger(d2Agendas.length)} agenda(s) até D+2`, `🚨 ${formatInteger(delayed.length)} carga(s) fora do prazo`, `⚠️ ${formatInteger(occurrencesToday.length)} ocorrência(s) do dia`, `↩️ ${formatInteger(returns.length)} devolução(ões)`];
   const weather = buildWeatherHeadline(); if (weather) items.push(`🌦️ ${weather}`);
-  const next = d2Agendas.slice(0, 3).map((row) => `${row.uf || 'UF'} ${row.of || row.notaFiscal || ''}`.trim()).filter(Boolean).join(', '); if (next) items.push(`🔎 Próximas agendas: ${next}`);
+  const next = d2Agendas.slice(0, 4).map((row) => {
+    const nf = row.notaFiscal ? `NF ${row.notaFiscal}` : 'NF -';
+    const of = row.of ? `OF ${row.of}` : 'OF -';
+    const driver = row.motorista || 'motorista não informado';
+    const plate = row.placa || 'placa não informada';
+    const date = formatDate(row.agendaDate || row.previsaoEntregaDate) || 'sem data';
+    return `${date} • ${row.uf || 'UF'} • ${of} • ${nf} • ${driver} • ${plate}`;
+  }).filter(Boolean).join('  |  '); if (next) items.push(`🔎 Próximas agendas: ${next}`);
   track.innerHTML = items.map((item) => `<span>${escapeHtml(item)}</span>`).join('');
 }
 async function fetchWeather() {
@@ -2093,11 +2165,16 @@ function exportDynamicReportPdf() {
 function buildReportPrintHtml() {
   const preview = document.getElementById('reportPreview')?.innerHTML || '';
   const dynamic = DOM.dynamicInfoChart?.innerHTML || '';
+  const filters = DOM.dynamicFilterChips?.innerHTML || '';
   const insights = DOM.dynamicInfoInsights?.innerHTML || '';
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Torre de Controle</title><style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#102033;background:#fff}h1{margin:0 0 4px;font-size:24px}p{color:#536474}.report-print-grid{display:grid;gap:14px}.report-block,.dynamic-info-panel{break-inside:avoid;border:1px solid #dde7f0;border-radius:16px;padding:14px;background:#f8fbfd}.mini-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.mini-kpi-row span,.report-bar,.dynamic-matrix-row,.insight{padding:8px;border-radius:12px;background:#fff;border:1px solid #e8eef5}.report-bar,.dynamic-matrix-row{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:center}.report-bar i,.dynamic-stack{height:10px;border-radius:999px;background:#e7eef6;overflow:hidden}.report-bar em,.dynamic-stack span{display:block;height:100%;background:#2a83c6}.dynamic-stack{display:flex}.dynamic-legend,.insight-list{display:flex;gap:8px;flex-wrap:wrap}.data-table{width:100%;border-collapse:collapse;font-size:11px}.data-table th,.data-table td{border:1px solid #dbe5ef;padding:6px;text-align:left}@page{size:A4 landscape;margin:10mm}@media print{button{display:none!important}body{margin:0}}
-  </style></head><body><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p><main class="report-print-grid">${preview}<section class="dynamic-info-panel"><h2>Informação Dinâmica</h2>${dynamic}<div class="insight-list">${insights}</div></section></main></body></html>`;
+  const selected = getSelectedReportOptions();
+  const orientation = selected.includes('details') || selected.length > 5 ? 'landscape' : 'portrait';
+  const pageWidth = orientation === 'landscape' ? '277mm' : '190mm';
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Torre de Controle</title><link rel="stylesheet" href="styles.css"><style>
+    @page{size:A4 ${orientation};margin:8mm}*{box-sizing:border-box}html,body{background:#fff!important;color:#102033!important}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif}.print-page{width:${pageWidth};max-width:${pageWidth};margin:0 auto;transform-origin:top left}.print-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:0 0 10px;padding:10px 0;border-bottom:2px solid #dfe8f1}.print-header h1{margin:0;font-size:20px}.print-header p{margin:4px 0 0;color:#536474;font-size:11px}.report-preview,.dynamic-info-panel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}.report-block,.dynamic-info-panel,.insight,.report-bar,.dynamic-matrix-row,.dynamic-bar-item,.dynamic-ranking-row{break-inside:avoid;background:#fff!important;border:1px solid #dfe8f1!important;color:#102033!important;box-shadow:none!important}.report-block.full,.dynamic-info-panel{grid-column:1/-1}.report-block,.dynamic-info-panel{border-radius:14px!important;padding:10px!important}.mini-kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:8px!important}.report-bar,.dynamic-matrix-row,.dynamic-ranking-row{display:grid!important;grid-template-columns:minmax(80px,1fr) minmax(140px,2fr) auto!important;gap:8px!important;align-items:center!important;padding:7px!important;border-radius:10px!important}.dynamic-bar-item{display:grid!important;grid-template-columns:minmax(90px,1fr) minmax(160px,2fr)!important;gap:8px!important;padding:7px!important;border-radius:10px!important}.report-bar i,.dynamic-stack,.dynamic-bar-item i,.dynamic-ranking-row i{height:10px!important;border-radius:999px!important;background:#e8eef6!important;overflow:hidden!important}.report-bar em,.dynamic-stack span,.dynamic-bar-item em,.dynamic-ranking-row em{display:block!important;height:100%!important;background:#2a83c6}.dynamic-filter-chips,.dynamic-legend,.insight-list{display:flex!important;gap:6px!important;flex-wrap:wrap!important}.dynamic-type-buttons,.export-hint,button,.modal-close{display:none!important}.data-table{width:100%;border-collapse:collapse;font-size:9px}.data-table th,.data-table td{border:1px solid #dbe5ef;padding:4px;text-align:left}.table-wrap{max-height:none!important;overflow:visible!important}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-page{page-break-after:auto}.report-preview,.dynamic-info-panel{gap:8px!important}.panel-header{padding:0!important;margin:0 0 6px!important}}
+  </style></head><body><main class="print-page"><header class="print-header"><div><h1>Torre de Controle - Monitoramento</h1><p>Gerado em ${escapeHtml(formatDateTime(new Date()))} • ${escapeHtml(STATE.filters.source || 'Todas as unidades')} • ${formatInteger(STATE.filtered.length)} registros</p></div><strong>${orientation === 'landscape' ? 'A4 horizontal' : 'A4 vertical'}</strong></header><section class="report-preview">${preview}</section><section class="dynamic-info-panel"><h2>Informação Dinâmica</h2>${dynamic}<div class="dynamic-filter-chips">${filters}</div><div class="insight-list">${insights}</div></section></main></body></html>`;
 }
+
 
 function buildExportRows(rows) {
   const rawKeys = [...new Set(rows.flatMap((row) => Object.keys(row.raw || {}).filter((key) => !key.startsWith('__'))))];
@@ -2268,6 +2345,7 @@ function monthNameToNumber(value) {
   const numeric = Number(n);
   return numeric >= 1 && numeric <= 12 ? numeric : null;
 }
+function monthShortName(month) { return ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][Math.max(1, Math.min(12, Number(month) || 1)) - 1]; }
 function extractUfFromText(text) { return normalizeUf(text); }
 function debounce(fn, delay) { let timer; return (...args) => { window.clearTimeout(timer); timer = window.setTimeout(() => fn(...args), delay); }; }
 function parseDate(value) {

@@ -6,9 +6,9 @@ on:
       - arena/01a0ee71-monitoramento2
       - main
   schedule:
-    # Atualiza o snapshot das planilhas a cada 10 minutos quando o workflow
+    # Atualiza o snapshot das planilhas a cada 15 minutos quando o workflow
     # estiver presente na branch padrão do repositório.
-    - cron: '*/10 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:

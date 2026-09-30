@@ -5,7 +5,7 @@ Painel web estático para monitoramento das planilhas públicas:
 - **Monitoramento Filial BA**
 - **Monitoramento Matriz SP**
 
-A aplicação lê a aba **acompanhamento**/primeira aba publicada das planilhas, consolida os dados e atualiza automaticamente a cada **10 minutos**. Também há botão **Atualizar agora** para atualização manual.
+A aplicação lê a aba **acompanhamento**/primeira aba publicada das planilhas, consolida os dados e atualiza automaticamente a cada **15 minutos**. Também há botão **Atualizar agora** para atualização manual.
 
 ## Funcionalidades
 
@@ -37,6 +37,6 @@ O repositório contém workflow em `.github/workflows/pages.yml` para publicar o
 ## Observações técnicas
 
 - Antes do deploy, o GitHub Actions executa `scripts/fetch_sheets.py` e gera `data/sheets.json` com 100% das linhas/colunas encontradas nas planilhas publicadas. O painel lê esse snapshot local para evitar bloqueios de CORS no navegador.
-- O workflow também possui agenda `*/10 * * * *`; após estar na branch padrão, ele atualiza o snapshot a cada 10 minutos. O botão **Atualizar agora** recarrega o snapshot publicado e tenta fallback direto nas planilhas.
+- O workflow também possui agenda `*/15 * * * *`; após estar na branch padrão, ele atualiza o snapshot a cada 15 minutos. O botão **Atualizar agora** recarrega o snapshot publicado e tenta fallback direto nas planilhas.
 - Se o snapshot e as fontes externas ficarem indisponíveis, o painel entra em modo demonstrativo para continuar navegável e exibe alerta no topo.
 - O agente **Monitor IA** é uma camada analítica local, baseada nos dados carregados no painel; não envia dados a serviços de IA externos.
