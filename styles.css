@@ -6489,11 +6489,17 @@ body[data-theme="dark"] #mapScopeBadge {
 }
 .map-only-grid > .map-heatmap-card {
   grid-area: map !important;
-  min-height: 720px !important;
+  min-height: 540px !important;
+  max-height: 620px !important;
 }
-.map-only-grid .heatmap-brazil,
+.map-only-grid .heatmap-brazil {
+  flex: 0 1 auto !important;
+  height: clamp(380px, 48vh, 455px) !important;
+  min-height: 380px !important;
+}
 .map-only-grid .heatmap-brazil svg {
-  min-height: 590px !important;
+  height: 100% !important;
+  min-height: 380px !important;
 }
 .map-info-row {
   display: grid !important;
@@ -6668,10 +6674,14 @@ body[data-theme="dark"] .city-bubble-label {
     grid-column: auto;
   }
   .map-only-grid > .map-heatmap-card {
-    min-height: 560px !important;
+    min-height: 480px !important;
+    max-height: 540px !important;
   }
-  .map-only-grid .heatmap-brazil,
+  .map-only-grid .heatmap-brazil {
+    height: clamp(320px, 46vh, 380px) !important;
+    min-height: 320px !important;
+  }
   .map-only-grid .heatmap-brazil svg {
-    min-height: 420px !important;
+    min-height: 320px !important;
   }
 }
