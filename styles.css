@@ -4752,3 +4752,270 @@ body[data-theme="dark"] .kpi-card .kpi-icon {
     padding-right: 42px;
   }
 }
+
+/* Evolução mensal: gráfico em colunas interativas */
+.line-dashboard {
+  display: grid;
+  grid-template-rows: minmax(250px, 1fr) auto;
+  gap: 12px;
+}
+
+.monthly-grid path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--blue) 12%, #ffffff);
+  stroke-width: 1;
+}
+
+.monthly-column {
+  cursor: pointer;
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.monthly-column:hover .month-bar.total {
+  fill: color-mix(in srgb, var(--blue) 34%, #ffffff);
+}
+
+.month-bar.total {
+  fill: color-mix(in srgb, var(--blue) 16%, #ffffff);
+  filter: drop-shadow(0 12px 18px rgba(16, 33, 49, .08));
+}
+
+.month-bar.delivered {
+  fill: color-mix(in srgb, var(--positive) 72%, #ffffff);
+}
+
+.month-bar.delayed {
+  fill: color-mix(in srgb, var(--negative) 80%, #ffffff);
+}
+
+.month-rate-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--green) 74%, #0c2a3c);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 6 8;
+  opacity: .84;
+  pointer-events: none;
+}
+
+.month-rate-dot {
+  stroke: #fff;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 6px 10px rgba(16, 33, 49, .12));
+}
+.month-rate-dot.success { fill: var(--positive); }
+.month-rate-dot.warn { fill: var(--warning); }
+.month-rate-dot.danger { fill: var(--negative); }
+
+.month-value {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.month-label {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.monthly-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.monthly-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monthly-legend i {
+  width: 18px;
+  height: 10px;
+  border-radius: 999px;
+}
+.monthly-legend i.total { background: color-mix(in srgb, var(--blue) 25%, #ffffff); }
+.monthly-legend i.delivered { background: var(--positive); }
+.monthly-legend i.delayed { background: var(--negative); }
+.monthly-legend i.rate { height: 4px; background: var(--green); }
+.monthly-legend em {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--muted) 76%, var(--blue));
+  font-style: normal;
+  font-weight: 800;
+}
+
+/* Ocorrências por tipo */
+.occurrence-type-panel {
+  margin-bottom: 18px;
+}
+
+.occurrence-type-chart {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.occurrence-type-chart .bar-row {
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--warning) 8%, #ffffff);
+}
+
+/* Performance por origem: preencher espaço com leitura executiva */
+.performance-origin-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.origin-card-list {
+  display: grid;
+  gap: 10px;
+}
+
+.origin-rate-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--blue) 7%, #ffffff);
+  box-shadow: inset 4px 0 0 var(--blue);
+}
+
+.origin-rate-card.success { box-shadow: inset 4px 0 0 var(--positive); }
+.origin-rate-card.warn { box-shadow: inset 4px 0 0 var(--warning); }
+.origin-rate-card.danger { box-shadow: inset 4px 0 0 var(--negative); }
+
+.origin-rate-card strong,
+.origin-rate-card b {
+  color: var(--text);
+  font-weight: 950;
+}
+
+.origin-rate-card b {
+  font-size: 26px;
+  letter-spacing: -.04em;
+}
+
+.origin-rate-card span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.origin-rate-card i {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  height: 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 10%, #ffffff);
+}
+
+.origin-rate-card em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--positive), var(--green));
+}
+
+.origin-rate-card.warn em { background: linear-gradient(90deg, var(--warning), #ffd166); }
+.origin-rate-card.danger em { background: linear-gradient(90deg, var(--negative), #ff9b8f); }
+
+.origin-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.origin-insight {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  min-height: 94px;
+  padding: 11px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.62);
+}
+
+.origin-insight > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--blue) 10%, #ffffff);
+}
+
+.origin-insight small,
+.origin-insight em {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.origin-insight strong {
+  display: block;
+  margin: 2px 0 3px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+/* Reposicionar ícones desfocados dos cartões no centro vertical para evitar corte */
+.kpi-grid .kpi-card .kpi-icon,
+.kpi-card .kpi-icon {
+  top: 50% !important;
+  right: 16px !important;
+  bottom: auto !important;
+  width: 82px !important;
+  text-align: center !important;
+  font-size: clamp(38px, 4.2vw, 64px) !important;
+  transform: translateY(-50%) rotate(-8deg) !important;
+}
+
+@media (max-width: 760px) {
+  .line-dashboard {
+    grid-template-rows: minmax(220px, 1fr) auto;
+  }
+  .monthly-legend em {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .occurrence-type-chart,
+  .origin-insight-grid {
+    grid-template-columns: 1fr;
+  }
+  .kpi-grid .kpi-card .kpi-icon,
+  .kpi-card .kpi-icon {
+    right: 10px !important;
+    width: 64px !important;
+    font-size: 42px !important;
+  }
+}
+
+body[data-theme="dark"] .month-bar.total {
+  fill: color-mix(in srgb, var(--blue) 26%, #102233);
+}
+body[data-theme="dark"] .origin-rate-card,
+body[data-theme="dark"] .occurrence-type-chart .bar-row,
+body[data-theme="dark"] .origin-insight {
+  background: rgba(255,255,255,.06);
+}
+
+.occurrence-type-chart {
+  display: grid;
+}

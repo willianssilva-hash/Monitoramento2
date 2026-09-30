@@ -31,6 +31,8 @@ const CONFIG = {
     chegadaCliente: ['Chegada no cliente', 'Chegada Cliente', 'Data Chegada Cliente', 'Chegada', 'Data Entrega', 'Entrega Realizada'],
     ontime: ['ONTIME', 'On Time', 'On-time', 'No Prazo', 'Dentro do Prazo', 'OTD'],
     ocorrencia: ['Ocorrência', 'Ocorrencia', 'Descrição da Ocorrência', 'Descricao da Ocorrencia', 'Descrição Ocorrência', 'Descricao Ocorrencia', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
+    tipoOcorrencia: ['Tipo de Ocorrência', 'Tipo Ocorrência', 'TipoOcorrência', 'Tipo de Ocorrencia', 'Tipo Ocorrencia', 'TipoOcorrencia'],
+    descricaoOcorrencia: ['Descrição da Ocorrência', 'Descricao da Ocorrencia', 'Descrição Ocorrência', 'Descricao Ocorrencia', 'Motivo Ocorrência', 'Motivo Ocorrencia'],
     setor: ['Setor Responsável', 'Setor Responsavel', 'SetorResponsável', 'SetorResponsavel', 'Setor', 'Responsável', 'Responsavel', 'Área Responsável', 'Area Responsavel'],
     devolucao: ['Devolução', 'Devolucao', 'Dev', 'Retorno', 'Logística Reversa', 'Logistica Reversa'],
     tipoDevolucao: ['Tipo Devolução', 'Tipo de Devolução', 'TipoDevolução', 'TipoDevolucao', 'Tipo Devolucao', 'Tipo de Devolucao', 'Parcial/Total', 'Devolução Parcial Total'],
@@ -62,6 +64,11 @@ const pendingGviz = new Map();
 let snapshotPromise = null;
 let gvizInstalled = false;
 let loadSequence = 0;
+let autoRefreshTimer = null;
+let countdownTimer = null;
+let tooltipFrame = null;
+let tooltipTarget = null;
+let tooltipEvent = null;
 const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard. descarga': 'warn', 'Em trânsito': 'info', 'Em aberto': 'purple', Faturado: 'purple' };
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -69,8 +76,8 @@ window.addEventListener('DOMContentLoaded', () => {
   addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 10 minutos. Você pode pedir totais, atrasos, ocorrências, devoluções, localização de informações ou um relatório consolidado dos filtros atuais.');
   loadData({ manual: false });
   loadBrazilGeoJson();
-  window.setInterval(() => loadData({ manual: false }), CONFIG.refreshIntervalMs);
-  window.setInterval(updateCountdown, 1000);
+  if (countdownTimer) window.clearInterval(countdownTimer);
+  countdownTimer = window.setInterval(updateCountdown, 1000);
 });
 
 function cacheDom() {
@@ -127,6 +134,7 @@ function activateTab(tab) {
   STATE.activeTab = tab;
   DOM.navTabs.forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   DOM.panels.forEach((panel) => panel.classList.toggle('active', panel.dataset.tabPanel === tab));
+  renderActiveTab();
 }
 
 function selectSourceTab(source) {
@@ -168,30 +176,51 @@ function activatePerformanceView(view = 'unit') {
 }
 
 async function loadData({ manual = false } = {}) {
+  if (STATE.isLoading) {
+    if (manual) addAiMessage('Já existe uma atualização em andamento. Aguarde alguns segundos para evitar travamento do painel.');
+    return;
+  }
   const seq = ++loadSequence;
   STATE.isLoading = true;
   snapshotPromise = null;
+  if (autoRefreshTimer) { window.clearTimeout(autoRefreshTimer); autoRefreshTimer = null; }
   setLoadStatus('loading', manual ? 'Atualizando manualmente...' : 'Atualizando planilhas...');
   showBanner('', '');
-  const sourceResults = await Promise.all(CONFIG.sources.map(async (source) => {
-    try { return { source, records: await fetchSource(source) }; }
-    catch (error) { return { source, records: [], error }; }
-  }));
-  if (seq !== loadSequence) return;
-  let records = sourceResults.flatMap((item) => item.records);
-  STATE.errors = sourceResults.filter((item) => item.error).map((item) => `${item.source.short}: ${item.error.message || item.error}`);
-  STATE.isDemo = false;
-  if (!records.length) {
-    records = buildDemoRecords(); STATE.isDemo = true;
-    STATE.errors = ['Não foi possível carregar as planilhas pelo navegador neste momento. Exibindo base demonstrativa para manter o painel navegável. Verifique se as publicações Google continuam públicas.'];
+  try {
+    const sourceResults = await Promise.all(CONFIG.sources.map(async (source) => {
+      try { return { source, records: await fetchSource(source) }; }
+      catch (error) { return { source, records: [], error }; }
+    }));
+    if (seq !== loadSequence) return;
+    let records = sourceResults.flatMap((item) => item.records);
+    STATE.errors = sourceResults.filter((item) => item.error).map((item) => `${item.source.short}: ${item.error.message || item.error}`);
+    STATE.isDemo = false;
+    if (!records.length) {
+      records = buildDemoRecords(); STATE.isDemo = true;
+      STATE.errors = ['Não foi possível carregar as planilhas pelo navegador neste momento. Exibindo base demonstrativa para manter o painel navegável. Verifique se as publicações Google continuam públicas.'];
+    }
+    STATE.rawRecords = records;
+    STATE.records = records.map(normalizeRecord).filter((row) => row && !isRetiraContract(row) && hasDocumentNumber(row));
+    STATE.lastUpdated = new Date(); STATE.isLoading = false;
+    scheduleAutoRefresh();
+    populateDynamicFilters(); applyFiltersAndRender(); fetchWeather();
+    if (STATE.errors.length) { setLoadStatus(STATE.isDemo ? 'error' : 'ok', STATE.isDemo ? 'Modo demonstrativo' : 'Atualizado com alertas'); showBanner(STATE.errors.join(' • '), STATE.isDemo ? 'error' : 'warn'); }
+    else setLoadStatus('ok', 'Dados atualizados');
+    if (manual) addAiMessage(`Atualização concluída às ${formatTime(STATE.lastUpdated)}. ${formatInteger(STATE.records.length)} registros carregados${STATE.isDemo ? ' em modo demonstrativo' : ''}.`);
+  } catch (error) {
+    STATE.isLoading = false;
+    STATE.errors = [error.message || String(error)];
+    setLoadStatus('error', 'Falha ao atualizar');
+    showBanner(STATE.errors.join(' • '), 'error');
+    scheduleAutoRefresh();
   }
-  STATE.rawRecords = records;
-  STATE.records = records.map(normalizeRecord).filter((row) => row && !isRetiraContract(row) && hasDocumentNumber(row));
-  STATE.lastUpdated = new Date(); STATE.nextRefreshAt = new Date(Date.now() + CONFIG.refreshIntervalMs); STATE.isLoading = false;
-  populateDynamicFilters(); applyFiltersAndRender(); fetchWeather();
-  if (STATE.errors.length) { setLoadStatus(STATE.isDemo ? 'error' : 'ok', STATE.isDemo ? 'Modo demonstrativo' : 'Atualizado com alertas'); showBanner(STATE.errors.join(' • '), STATE.isDemo ? 'error' : 'warn'); }
-  else setLoadStatus('ok', 'Dados atualizados');
-  if (manual) addAiMessage(`Atualização concluída às ${formatTime(STATE.lastUpdated)}. ${formatInteger(STATE.records.length)} registros carregados${STATE.isDemo ? ' em modo demonstrativo' : ''}.`);
+}
+
+function scheduleAutoRefresh() {
+  if (autoRefreshTimer) window.clearTimeout(autoRefreshTimer);
+  STATE.nextRefreshAt = new Date(Date.now() + CONFIG.refreshIntervalMs);
+  updateCountdown();
+  autoRefreshTimer = window.setTimeout(() => loadData({ manual: false }), CONFIG.refreshIntervalMs);
 }
 
 async function fetchSource(source) {
@@ -218,13 +247,21 @@ async function fetchSource(source) {
 
 async function loadSheetSnapshot() {
   if (!snapshotPromise) {
-    snapshotPromise = fetch(`data/sheets.json?_=${Date.now()}`, { cache: 'no-store' })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-      });
+    snapshotPromise = fetchJsonWithTimeout(`data/sheets.json?_=${Date.now()}`, 9000);
   }
   return snapshotPromise;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 async function fetchSnapshotSource(source) {
@@ -409,6 +446,7 @@ function normalizeRecord(record, index) {
   row.monthNumber = monthNameToNumber(row.mes) || (row.referenceDate ? row.referenceDate.getMonth() + 1 : null);
   const normalizedStatus = normalizeText(row.status || row.faturamento || '');
   row.delivered = isDelivered(normalizedStatus); row.waitingUnload = isWaitingUnload(normalizedStatus); row.transit = isTransit(normalizedStatus, row); row.open = !row.delivered && !row.waitingUnload;
+  row.occurrenceType = extractOccurrenceType(record, row); row.occurrenceDescription = extractOccurrenceDescription(record, row);
   row.occurrenceText = getOccurrenceText(row); row.hasOccurrence = isMeaningfulOccurrence(row.occurrenceText);
   row.returnReason = extractReturnReason(record, row);
   if (row.returnReason) row.motivoDevolucao = row.returnReason;
@@ -446,7 +484,46 @@ function computeStatusBucket(row, normalizedStatus) { if (row.delayed) return 'F
 function isDelivered(normalizedStatus) { return /(finalizad|entregue|entrega realizada|baixad|concluid)/.test(normalizedStatus) && !/(faturamento|entrada)/.test(normalizedStatus); }
 function isWaitingUnload(normalizedStatus) { return /(aguardando descarga|descarga no cliente|em descarga|aguard descarga)/.test(normalizedStatus); }
 function isTransit(normalizedStatus, row) { return /(transito|trânsito|rota|viagem|a caminho|em entrega|fazendo entrega|em andamento|desloc|carregado|coleta)/.test(normalizedStatus) || (!row.delivered && !row.waitingUnload && (row.placa || row.motorista) && (row.previsaoEntregaDate || row.agendaDate)); }
-function getOccurrenceText(row) { return [row.ocorrencia, row.setor && row.ocorrencia ? `Setor: ${row.setor}` : ''].filter(Boolean).join(' • '); }
+function getOccurrenceText(row) {
+  const parts = [];
+  if (isDetailedOccurrenceLabel(row.occurrenceType)) parts.push(cleanLabel(row.occurrenceType));
+  if (isDetailedOccurrenceLabel(row.occurrenceDescription) && normalizeText(row.occurrenceDescription) !== normalizeText(row.occurrenceType)) parts.push(cleanLabel(row.occurrenceDescription));
+  if (!parts.length && isMeaningfulOccurrence(row.ocorrencia)) parts.push(cleanLabel(row.ocorrencia));
+  if (row.setor && parts.length) parts.push(`Setor: ${row.setor}`);
+  return parts.filter(Boolean).join(' • ');
+}
+function extractOccurrenceType(record, row) {
+  const candidates = occurrenceFieldValues(record, (normalized) => (normalized.includes('tipo') && normalized.includes('ocorr')) || normalized === 'ocorrencia');
+  candidates.push(row && row.tipoOcorrencia, row && row.ocorrencia);
+  const detailed = candidates.map(cleanLabel).find(isDetailedOccurrenceLabel);
+  if (detailed) return detailed;
+  return '';
+}
+function extractOccurrenceDescription(record, row) {
+  const candidates = occurrenceFieldValues(record, (normalized) => (normalized.includes('descr') && normalized.includes('ocorr')) || (normalized.includes('motivo') && normalized.includes('ocorr')));
+  candidates.push(row && row.descricaoOcorrencia);
+  const detailed = candidates.map(cleanLabel).find(isDetailedOccurrenceLabel);
+  if (detailed) return detailed;
+  return '';
+}
+function occurrenceFieldValues(record, predicate) {
+  return Object.keys(record || {})
+    .filter((key) => !key.startsWith('__') && predicate(normalizeText(key)))
+    .map((key) => record[key])
+    .filter(isPresent);
+}
+function isDetailedOccurrenceLabel(value) {
+  const text = cleanLabel(value);
+  if (!text) return false;
+  const normalized = normalizeText(text);
+  if (!normalized || /^(sim|s|nao|não|n|ok|n\/a|sem ocorrencia|sem ocorrência|sem registro|inexistente|normal|0|-)$/.test(normalized)) return false;
+  if (/^\d+[\d\s.,/%-]*$/.test(text)) return false;
+  return /[a-zA-ZÀ-ÿ]/.test(text);
+}
+function occurrenceTypeLabel(row) {
+  const detailed = [row.occurrenceType, row.occurrenceDescription].map(cleanLabel).find(isDetailedOccurrenceLabel);
+  return simplifyDescription(detailed || 'Ocorrência informada sem tipo detalhado');
+}
 function getReturnText(row) { return [row.devolucao, row.tipoDevolucao, row.returnReason].filter(Boolean).join(' • '); }
 function extractReturnReason(record, row) {
   const candidateKeys = Object.keys(record || {}).filter((key) => {
@@ -489,7 +566,7 @@ function normalizeReturnType(row) {
 }
 function isMeaningfulOccurrence(value) { const n = normalizeText(value); return Boolean(n && !/(^(nao|não)(\s+(nao|não))*$|sem ocorrencia|sem ocorrência|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
 function isMeaningfulReturn(value) { const n = normalizeText(value); return Boolean(n && !/(^(nao|não)(\s+(nao|não))*$|sem devolucao|sem devolução|nao possui|não possui|n\/a|^ok$|normal|sem registro|inexistente|^0$)/.test(n)); }
-function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
+function buildSearchText(row) { const rawValues = Object.entries(row.raw || {}).filter(([key]) => !key.startsWith('__')).map(([, value]) => value); return normalizeText([row.source,row.of,row.notaFiscal,row.cliente,row.cidade,row.uf,row.placa,row.motorista,row.status,row.ontime,row.occurrenceType,row.occurrenceDescription,row.occurrenceText,row.returnText,row.observacao,...rawValues].join(' ')); }
 
 function populateSourceFilter() {
   DOM.filterSource.innerHTML = CONFIG.sources.map((source) => `<option value="${escapeHtml(source.short)}">${escapeHtml(source.short)}</option>`).join('');
@@ -514,7 +591,12 @@ function matchesFilters(row, filters) {
   }
   return !(filters.search && !row.searchText.includes(normalizeText(filters.search)));
 }
-function renderAll() { updateHeaderStatus(); renderGeneral(); renderPerformance(); renderOccurrences(); renderReturns(); renderExtras(); renderReportBuilder(); renderMap(); renderTicker(); }
+function renderAll() { updateHeaderStatus(); renderActiveTab(); renderTicker(); }
+function renderActiveTab() {
+  const renderers = { general: renderGeneral, performance: renderPerformance, occurrences: renderOccurrences, returns: renderReturns, extras: renderExtras, report: renderReportBuilder, map: renderMap };
+  const renderer = renderers[STATE.activeTab] || renderGeneral;
+  renderer();
+}
 function updateHeaderStatus() { const count = STATE.filtered.length; DOM.filterCounter.textContent = `${formatInteger(count)} registro${count === 1 ? '' : 's'} nos filtros`; if (STATE.lastUpdated) DOM.lastUpdate.textContent = `Atualizado às ${formatTime(STATE.lastUpdated)}`; }
 function setLoadStatus(status, message) { DOM.loadDot.classList.remove('loading', 'error'); if (status === 'loading') DOM.loadDot.classList.add('loading'); if (status === 'error') DOM.loadDot.classList.add('error'); DOM.lastUpdate.textContent = status === 'ok' && STATE.lastUpdated ? `${message} às ${formatTime(STATE.lastUpdated)}` : message; updateCountdown(); }
 function updateCountdown() { if (!STATE.nextRefreshAt) { DOM.nextUpdate.textContent = 'próxima: --:--'; return; } const remaining = Math.max(0, STATE.nextRefreshAt.getTime() - Date.now()); const minutes = Math.floor(remaining / 60000); const seconds = Math.floor((remaining % 60000) / 1000); DOM.nextUpdate.textContent = `próxima: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`; }
@@ -575,7 +657,7 @@ function renderGeneralDashboardCharts(rows, metrics) {
     label, value, cls: statusColorClass(label), action: { action: 'statusBucket', value: label }
   })), { centerValue: formatInteger(rows.length), centerLabel: 'registros' });
 
-  renderLineDashboard('generalTrendChart', buildMonthlyTrend(rows));
+  renderMonthlyComboDashboard('generalTrendChart', buildMonthlyTrend(rows));
 
   renderDonutDashboard('deliveryMixChart', [
     { label: 'Finalizadas', value: metrics.delivered, cls: 'success', action: { action: 'filterStatus', value: 'delivered' } },
@@ -608,18 +690,44 @@ function renderDonutDashboard(containerId, items, options = {}) {
   container.innerHTML = `<div class="donut-ring" style="--donut:${gradient}" data-summary="${escapeHtml(`<strong>${options.centerLabel || 'Total'}</strong><br>${options.centerValue || formatInteger(total)}`)}"><div><strong>${escapeHtml(options.centerValue || formatInteger(total))}</strong><span>${escapeHtml(options.centerLabel || 'Total')}</span></div></div><div class="donut-legend">${legend}</div>`;
 }
 
-function renderLineDashboard(containerId, trend) {
+function renderMonthlyComboDashboard(containerId, trend) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!trend.length) { container.innerHTML = emptyState('Sem datas suficientes para evolução.'); return; }
-  const width = 640, height = 250, padX = 34, padY = 28;
-  const max = Math.max(1, ...trend.flatMap((item) => [item.total, item.delivered, item.delayed]));
-  const x = (index) => padX + (trend.length <= 1 ? 0 : (index * (width - padX * 2)) / (trend.length - 1));
-  const y = (value) => height - padY - ((value / max) * (height - padY * 2));
-  const line = (key) => trend.map((item, index) => `${x(index).toFixed(1)},${y(item[key]).toFixed(1)}`).join(' ');
-  const dots = (key, cls) => trend.map((item, index) => `<circle class="line-dot ${cls}" cx="${x(index).toFixed(1)}" cy="${y(item[key]).toFixed(1)}" r="4" data-summary="${escapeHtml(`<strong>${item.label}</strong><br>${formatInteger(item[key])} ${key === 'total' ? 'registro(s)' : key === 'delivered' ? 'entrega(s)' : 'atraso(s)'}`)}"></circle>`).join('');
-  const labels = trend.map((item, index) => `<text x="${x(index).toFixed(1)}" y="${height - 6}" text-anchor="middle">${escapeHtml(item.label)}</text>`).join('');
-  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução mensal"><g class="line-grid"><path d="M${padX} ${padY} H${width - padX}"></path><path d="M${padX} ${height / 2} H${width - padX}"></path><path d="M${padX} ${height - padY} H${width - padX}"></path></g><polyline class="line-series total" points="${line('total')}"></polyline><polyline class="line-series delivered" points="${line('delivered')}"></polyline><polyline class="line-series delayed" points="${line('delayed')}"></polyline>${dots('total', 'total')}${dots('delivered', 'delivered')}${dots('delayed', 'delayed')}<g class="line-labels">${labels}</g></svg><div class="line-legend"><span><i class="total"></i>Total</span><span><i class="delivered"></i>Entregues</span><span><i class="delayed"></i>Atrasos</span></div>`;
+  const width = 720, height = 300, padX = 46, padTop = 30, padBottom = 56;
+  const chartHeight = height - padTop - padBottom;
+  const max = Math.max(1, ...trend.map((item) => Math.max(item.total, item.delivered, item.delayed)));
+  const slot = (width - padX * 2) / trend.length;
+  const barWidth = Math.min(42, Math.max(18, slot * 0.48));
+  const y = (value) => padTop + chartHeight - ((value / max) * chartHeight);
+  const h = (value) => Math.max(value ? 3 : 0, ((value / max) * chartHeight));
+  const columns = trend.map((item, index) => {
+    const cx = padX + slot * index + slot / 2;
+    const totalH = h(item.total);
+    const deliveredH = h(item.delivered);
+    const delayedH = h(item.delayed);
+    const rateY = padTop + chartHeight - ((item.rate / 100) * chartHeight);
+    const summary = `<strong>${item.label}</strong><br>${formatInteger(item.total)} registro(s) no mês<br>${formatInteger(item.delivered)} entregues • ${formatInteger(item.delayed)} atraso(s)<br>${formatInteger(item.inTransit)} em trânsito • ${formatInteger(item.occurrences)} ocorrência(s)<br>ONTIME: ${item.rate}% em ${formatInteger(item.eligible)} elegíveis`;
+    return `<g class="monthly-column clickable" data-action="filterMonth" data-value="${escapeHtml(String(item.month))}" data-summary="${escapeHtml(summary)}">
+      <rect class="month-bar total" x="${(cx - barWidth / 2).toFixed(1)}" y="${y(item.total).toFixed(1)}" width="${barWidth.toFixed(1)}" height="${totalH.toFixed(1)}" rx="10"></rect>
+      <rect class="month-bar delivered" x="${(cx - barWidth / 2 + barWidth * 0.16).toFixed(1)}" y="${y(item.delivered).toFixed(1)}" width="${(barWidth * 0.68).toFixed(1)}" height="${deliveredH.toFixed(1)}" rx="8"></rect>
+      <rect class="month-bar delayed" x="${(cx + barWidth / 2 + 6).toFixed(1)}" y="${(padTop + chartHeight - delayedH).toFixed(1)}" width="${Math.max(6, barWidth * 0.22).toFixed(1)}" height="${delayedH.toFixed(1)}" rx="6"></rect>
+      <circle class="month-rate-dot ${item.rate >= 90 ? 'success' : item.rate >= 75 ? 'warn' : 'danger'}" cx="${cx.toFixed(1)}" cy="${rateY.toFixed(1)}" r="5"></circle>
+      <text class="month-value" x="${cx.toFixed(1)}" y="${(y(item.total) - 8).toFixed(1)}" text-anchor="middle">${formatInteger(item.total)}</text>
+      <text class="month-label" x="${cx.toFixed(1)}" y="${height - 18}" text-anchor="middle">${escapeHtml(item.label)}</text>
+    </g>`;
+  }).join('');
+  const ratePoints = trend.map((item, index) => {
+    const cx = padX + slot * index + slot / 2;
+    const cy = padTop + chartHeight - ((item.rate / 100) * chartHeight);
+    return `${cx.toFixed(1)},${cy.toFixed(1)}`;
+  }).join(' ');
+  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução mensal interativa por colunas">
+    <g class="monthly-grid"><path d="M${padX} ${padTop} H${width - padX}"></path><path d="M${padX} ${padTop + chartHeight / 2} H${width - padX}"></path><path d="M${padX} ${padTop + chartHeight} H${width - padX}"></path></g>
+    <polyline class="month-rate-line" points="${ratePoints}"></polyline>
+    ${columns}
+  </svg>
+  <div class="monthly-legend"><span><i class="total"></i>Total</span><span><i class="delivered"></i>Entregues</span><span><i class="delayed"></i>Atrasos</span><span><i class="rate"></i>ONTIME</span><em>Clique no mês para filtrar/desfazer.</em></div>`;
 }
 
 function buildMonthlyTrend(rows) {
@@ -629,7 +737,20 @@ function buildMonthlyTrend(rows) {
     .slice(-8)
     .map(([key, list]) => {
       const [year, month] = key.split('-').map(Number);
-      return { label: `${String(month).padStart(2, '0')}/${String(year).slice(-2)}`, total: list.length, delivered: list.filter((row) => row.delivered).length, delayed: list.filter((row) => row.delayed).length };
+      const eligible = list.filter((row) => row.performanceEligible);
+      const ontime = eligible.filter((row) => row.ontimeStatus === true).length;
+      return {
+        key, month, year,
+        label: `${String(month).padStart(2, '0')}/${String(year).slice(-2)}`,
+        total: list.length,
+        delivered: list.filter((row) => row.delivered).length,
+        delayed: list.filter((row) => row.delayed).length,
+        inTransit: list.filter((row) => row.transit).length,
+        occurrences: list.filter((row) => row.hasOccurrence).length,
+        returns: list.filter((row) => row.hasReturn).length,
+        eligible: eligible.length,
+        rate: eligible.length ? Math.round((ontime / eligible.length) * 100) : 0
+      };
     });
 }
 
@@ -694,7 +815,7 @@ function renderPerformance() {
     ['Fora do prazo', late, 'danger'],
     ['Em trânsito não contado', notCountedTransit, 'warn']
   ]);
-  renderPerformanceBars('performanceSource', groupBy(eligible, (row) => row.source || 'Sem origem'), 'origem');
+  renderPerformanceSourceInsights('performanceSource', eligible, rows);
   renderPerformanceBars('performanceUf', groupBy(eligible, (row) => row.uf || 'Sem UF'), 'UF');
   renderRecordsTable('lateTable', rows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false)), { limit: 300, empty: 'Nenhuma carga fora do prazo nos filtros.' });
   renderConsolidatedPerformance(consolidatedRows);
@@ -727,6 +848,40 @@ function performanceGaugeHtml(rate, label, stats) {
   const statHtml = stats.map(([name, value, type]) => `<div class="gauge-stat ${escapeHtml(type || '')}" data-summary="${escapeHtml(`<strong>${name}</strong><br>${formatInteger(value)} registro(s)`)}"><span>${escapeHtml(name)}</span><strong>${formatInteger(value)}</strong></div>`).join('');
   return `<div class="performance-gauge-card" data-summary="${escapeHtml(`<strong>${label}</strong><br>${rate}% dentro do prazo`)}"><div class="gauge-ring" style="--pct:${rate}"><div class="gauge-content"><strong>${rate}%</strong><span>${escapeHtml(label)}</span></div></div><div class="gauge-stat-list">${statHtml}</div></div>`;
 }
+function renderPerformanceSourceInsights(containerId, eligibleRows, allRows) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const groupedEligible = groupBy(eligibleRows, (row) => row.source || 'Sem origem');
+  const entries = Object.entries(groupedEligible).map(([label, rows]) => {
+    const ontime = rows.filter((row) => row.ontimeStatus === true).length;
+    const late = rows.filter((row) => row.ontimeStatus === false || row.delayed).length;
+    return [label, { rows, count: rows.length, ontime, late, rate: rows.length ? Math.round((ontime / rows.length) * 100) : 0 }];
+  }).sort((a, b) => b[1].count - a[1].count || String(a[0]).localeCompare(String(b[0])));
+  if (!entries.length) { container.innerHTML = emptyState('Sem dados elegíveis para performance por origem.'); return; }
+  const sourceCards = entries.map(([label, item]) => {
+    const cls = item.rate >= 90 ? 'success' : item.rate >= 75 ? 'warn' : 'danger';
+    const summary = `<strong>${escapeHtml(label)}</strong><br>${item.rate}% dentro do prazo<br>${formatInteger(item.ontime)} no prazo • ${formatInteger(item.late)} fora<br>${formatInteger(item.count)} nota(s) elegíveis`;
+    return `<div class="origin-rate-card ${cls}" data-summary="${escapeHtml(summary)}"><div><strong>${escapeHtml(label)}</strong><span>${formatInteger(item.count)} notas elegíveis</span></div><b>${item.rate}%</b><i><em style="width:${item.rate}%"></em></i></div>`;
+  }).join('');
+  const selectedSource = STATE.filters.source === 'all' ? null : STATE.filters.source;
+  const focusRows = selectedSource ? allRows.filter((row) => row.source === selectedSource) : allRows;
+  const focusEligible = selectedSource ? eligibleRows.filter((row) => row.source === selectedSource) : eligibleRows;
+  const delayedRows = focusRows.filter((row) => row.delayed || (row.performanceEligible && row.ontimeStatus === false));
+  const notCountedTransit = focusRows.filter((row) => row.transit && !row.performanceEligible && !row.delayed).length;
+  const byUfLate = countBy(delayedRows, (row) => row.uf || 'Sem UF');
+  const byVehicleLate = countBy(delayedRows, (row) => cleanLabel(row.tpVeiculo) || 'Sem veículo');
+  const byStatus = countBy(focusRows, (row) => row.statusBucket || 'Sem status');
+  const focusOntime = focusEligible.filter((row) => row.ontimeStatus === true).length;
+  const focusRate = focusEligible.length ? Math.round((focusOntime / focusEligible.length) * 100) : 0;
+  const insightItems = [
+    { icon: '🎯', label: 'Leitura da origem', value: `${focusRate}% ONTIME`, text: `${formatInteger(focusEligible.length)} nota(s) entram na base de performance.` },
+    { icon: delayedRows.length ? '⚠' : '✅', label: delayedRows.length ? 'Ponto crítico' : 'Operação estável', value: delayedRows.length ? `${formatInteger(delayedRows.length)} fora do prazo` : 'Sem atrasos', text: delayedRows.length ? `UF mais crítica: ${topLabel(byUfLate) || 'não identificada'}.` : 'Nenhuma carga fora do prazo nos filtros.' },
+    { icon: '🚚', label: 'Trânsito monitorado', value: formatInteger(notCountedTransit), text: 'Em trânsito regular não entra no denominador até fechamento.' },
+    { icon: '▣', label: 'Status dominante', value: topLabel(byStatus) || '-', text: topLabel(byVehicleLate) ? `Veículo mais ligado a atraso: ${topLabel(byVehicleLate)}.` : 'Sem concentração crítica por veículo.' }
+  ];
+  container.innerHTML = `<div class="performance-origin-panel"><div class="origin-card-list">${sourceCards}</div><div class="origin-insight-grid">${insightItems.map((item) => `<div class="origin-insight" data-summary="${escapeHtml(`<strong>${item.label}</strong><br>${item.text}`)}"><span>${escapeHtml(item.icon)}</span><div><small>${escapeHtml(item.label)}</small><strong>${escapeHtml(item.value)}</strong><em>${escapeHtml(item.text)}</em></div></div>`).join('')}</div></div>`;
+}
+
 function renderPerformanceBars(containerId, grouped, labelType) {
   const entries = Object.entries(grouped).map(([label, rows]) => {
     const ontime = rows.filter((row) => row.ontimeStatus === true).length; return [label, { rows: rows.length, rate: rows.length ? Math.round((ontime / rows.length) * 100) : 0 }];
@@ -742,13 +897,15 @@ function renderPerformanceBars(containerId, grouped, labelType) {
 
 function renderOccurrences() {
   const rows = STATE.filtered.filter((row) => row.hasOccurrence);
-  const byUf = countBy(rows, (row) => row.uf || 'Sem UF'), bySector = countBy(rows, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'), descriptions = countBy(rows, (row) => simplifyDescription(row.ocorrencia || row.occurrenceText));
+  const byType = countBy(rows, occurrenceTypeLabel);
+  const byUf = countBy(rows, (row) => row.uf || 'Sem UF'), bySector = countBy(rows, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'), descriptions = countBy(rows, (row) => simplifyDescription(row.occurrenceDescription || row.occurrenceText));
   document.getElementById('occurrenceKpis').innerHTML = [
     kpiCard('Total de ocorrências', formatInteger(rows.length), `${formatInteger(Object.keys(byUf).length)} UFs impactadas`, '🚨', 'warn', 'occurrence'),
     kpiCard('Setores envolvidos', formatInteger(Object.keys(bySector).length), topLabel(bySector) ? `Principal: ${topLabel(bySector)}` : 'Sem setor informado', '▤', 'info'),
     kpiCard('Motoristas / placas', formatInteger(Object.keys(byDriver).length), topLabel(byDriver) ? `Maior recorrência: ${topLabel(byDriver)}` : 'Sem motorista informado', '🚚', 'purple'),
     kpiCard('Ocorrências em atraso', formatInteger(rows.filter((row) => row.delayed).length), 'Com status fora do prazo', '⏰', 'danger', 'delayed')
   ].join('');
+  renderBarList('occurrenceTypes', topEntries(byType, 12), { empty: 'Sem tipos de ocorrência informados.', colorResolver: () => 'warn' });
   renderBarList('occurrenceUf', topEntries(byUf, 10), { empty: 'Sem ocorrências por UF.', colorResolver: () => 'warn', actionResolver: (label) => ({ action: 'uf', value: label }) });
   renderBarList('occurrenceSector', topEntries(bySector, 10), { empty: 'Sem setor responsável informado.', colorResolver: () => 'purple' });
   renderBarList('occurrenceDrivers', topEntries(byDriver, 10), { empty: 'Sem motoristas/placas com ocorrência.', colorResolver: () => 'danger' });
@@ -1175,20 +1332,30 @@ function getMapRows() { return STATE.filtered.filter((row) => !(STATE.mapStatus 
 function computeRegionMetrics(rows) { return { total: rows.length, open: rows.filter((row) => row.open).length, transit: rows.filter((row) => row.transit).length, doingDelivery: rows.filter((row) => normalizeText(row.status).includes('entrega') || row.waitingUnload).length, delayed: rows.filter((row) => row.delayed).length, occurrences: rows.filter((row) => row.hasOccurrence).length, returns: rows.filter((row) => row.hasReturn).length, vehicles: uniqueCount(rows, (row) => row.placa || row.motorista || row.of), todayAgendas: rows.filter((row) => isSameDay(row.agendaDate || row.previsaoEntregaDate, new Date())).length }; }
 function renderRegionSummary(metric) { const items = [['Entregas em aberto', metric.open], ['Veículos em trânsito', metric.transit], ['Fazendo entrega', metric.doingDelivery], ['Cargas em atraso', metric.delayed], ['Ocorrências recentes', metric.occurrences], ['Devoluções', metric.returns], ['Veículos / motoristas', metric.vehicles], ['Agendas hoje', metric.todayAgendas]]; document.getElementById('regionSummary').innerHTML = items.map(([label, value]) => `<div class="region-metric"><span>${escapeHtml(label)}</span><strong>${formatInteger(value)}</strong></div>`).join(''); }
 function showMapTooltip(event, region, metric) { DOM.tooltip.innerHTML = `<strong>${escapeHtml(region)}</strong><br>${formatInteger(metric.open)} entregas em aberto • ${formatInteger(metric.transit)} veículos em trânsito<br>${formatInteger(metric.delayed)} atrasos • ${formatInteger(metric.occurrences)} ocorrências • ${formatInteger(metric.returns)} devoluções`; DOM.tooltip.style.left = `${event.clientX}px`; DOM.tooltip.style.top = `${event.clientY}px`; DOM.tooltip.classList.add('visible'); }
-function hideTooltip() { DOM.tooltip.classList.remove('visible'); }
+function hideTooltip() { DOM.tooltip.classList.remove('visible'); tooltipTarget = null; tooltipEvent = null; }
 function handleSummaryTooltipMove(event) {
   const element = event.target.closest('[data-summary]');
   if (!element || element.closest('.map-region, .heat-spot')) return;
-  DOM.tooltip.innerHTML = element.dataset.summary || '';
-  DOM.tooltip.style.left = `${event.clientX}px`;
-  DOM.tooltip.style.top = `${event.clientY}px`;
-  DOM.tooltip.classList.add('visible', 'summary-tooltip');
+  tooltipTarget = element;
+  tooltipEvent = event;
+  if (tooltipFrame) return;
+  tooltipFrame = window.requestAnimationFrame(() => {
+    tooltipFrame = null;
+    if (!tooltipTarget || !tooltipEvent) return;
+    const html = tooltipTarget.dataset.summary || '';
+    if (DOM.tooltip.innerHTML !== html) DOM.tooltip.innerHTML = html;
+    DOM.tooltip.style.left = `${tooltipEvent.clientX}px`;
+    DOM.tooltip.style.top = `${tooltipEvent.clientY}px`;
+    DOM.tooltip.classList.add('visible', 'summary-tooltip');
+  });
 }
 function handleSummaryTooltipOut(event) {
   const element = event.target.closest('[data-summary]');
   if (!element) return;
   if (event.relatedTarget && element.contains(event.relatedTarget)) return;
+  if (tooltipFrame) { window.cancelAnimationFrame(tooltipFrame); tooltipFrame = null; }
   DOM.tooltip.classList.remove('visible', 'summary-tooltip');
+  tooltipTarget = null; tooltipEvent = null;
 }
 
 function renderBarList(containerId, data, options = {}) {
@@ -1270,7 +1437,8 @@ function handleAction(action, value) {
   if (action === 'filterStatus') { const next = value || 'all'; DOM.filterStatus.value = DOM.filterStatus.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'statusBucket') { const statusMap = { 'Fora do prazo': 'delayed', Finalizado: 'delivered', 'Aguard. descarga': 'waiting', 'Em trânsito': 'transit', 'Em aberto': 'open', Faturado: 'open' }; const next = statusMap[value] || 'all'; DOM.filterStatus.value = DOM.filterStatus.value === next ? 'all' : next; onFilterChange(); }
   if (action === 'uf') { const next = value || 'all'; DOM.filterUf.value = DOM.filterUf.value === next ? 'all' : next; onFilterChange(); }
-  if (action === 'region') { const next = value || 'all'; STATE.selectedRegion = STATE.selectedRegion === next ? 'all' : next; DOM.mapRegionFilter.value = STATE.selectedRegion; activateTab('map'); renderMap(); }
+  if (action === 'filterMonth') { const next = value || 'all'; DOM.filterMonth.value = DOM.filterMonth.value === next ? 'all' : next; onFilterChange(); }
+  if (action === 'region') { const next = value || 'all'; STATE.selectedRegion = STATE.selectedRegion === next ? 'all' : next; DOM.mapRegionFilter.value = STATE.selectedRegion; activateTab('map'); }
 }
 
 function computeMetrics(rows) {
@@ -1300,9 +1468,10 @@ function buildGeneralInsights(rows) {
 }
 function buildOccurrenceInsights(rows) {
   if (!rows.length) return [{ type: 'success', icon: '✓', text: 'Nenhuma ocorrência nos filtros atuais.' }];
-  const byUf = countBy(rows, (row) => row.uf || 'Sem UF'), bySector = countBy(rows, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'), delayed = rows.filter((row) => row.delayed).length;
+  const byUf = countBy(rows, (row) => row.uf || 'Sem UF'), bySector = countBy(rows, (row) => cleanLabel(row.setor) || 'Sem setor'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa'), byType = countBy(rows, occurrenceTypeLabel), delayed = rows.filter((row) => row.delayed).length;
   return [
-    { type: 'warn', icon: '⚠', text: `UF com mais ocorrências: ${topLabel(byUf)} (${formatInteger(Math.max(...Object.values(byUf)))} registro(s)).` },
+    { type: 'warn', icon: '⚠', text: `Tipo mais recorrente: ${topLabel(byType) || 'não informado'} (${formatInteger(Math.max(...Object.values(byType)))} registro(s)).` },
+    { type: 'warn', icon: '📍', text: `UF com mais ocorrências: ${topLabel(byUf)} (${formatInteger(Math.max(...Object.values(byUf)))} registro(s)).` },
     { type: 'info', icon: '▤', text: `Setor mais acionado: ${topLabel(bySector)}. Verifique gargalos e tratativas abertas.` },
     { type: 'danger', icon: '🚚', text: `Maior recorrência por motorista/placa: ${topLabel(byDriver)}.` },
     { type: delayed ? 'danger' : 'success', icon: delayed ? '!' : '✓', text: `${formatInteger(delayed)} ocorrência(s) também estão em cargas fora do prazo.` }
