@@ -20,7 +20,7 @@ SNAPSHOT = ROOT / "data" / "sheets.json"
 SUMMARY = ROOT / "data" / "audit-summary.json"
 
 ALIASES = {
-    "data": ["Data Progr", "Data Prog De Embarque", "Data Programada", "Data Programação"],
+    "data": ["Data Progr", "Data Prog De Embarque", "Data Programada", "Data Programação", "Data de carregamento", "Data Carregamento", "Dt Carregamento", "Data Carga", "Data NF", "Data da entrega", "Previsão de Entrega", "Chegada no Cliente"],
     "of": ["OF", "Ordem de Frete", "Carga", "Chave OF + Cont"],
     "nota": ["NF", "Nota Fiscal", "Nº NF", "NFe"],
     "cliente": ["Cliente", "Destinatário", "Razão Social"],

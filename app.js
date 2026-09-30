@@ -9,7 +9,7 @@ const CONFIG = {
   ],
   aliases: {
     mes: ['Mês', 'Mes', 'Mês Referência', 'Mes Referencia'],
-    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Prog De Embarque', 'Data Prog de Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação'],
+    dataProgramada: ['Data Progr', 'Data Prog Embarque', 'Data Prog. Embarque', 'Data Prog De Embarque', 'Data Prog de Embarque', 'Data Programada', 'Data Programacao', 'Data Programação', 'Programação', 'Dt Programada', 'Data de Programação', 'Data de carregamento', 'Data Carregamento', 'Dt Carregamento', 'Data Carga'],
     of: ['OF', 'Ordem de Frete', 'Ordem Frete', 'Carga', 'Nº Carga', 'N Carga', 'Numero Carga', 'Número Carga', 'Remessa'],
     agenda: ['Agenda', 'Data Agenda', 'Agendamento', 'Data Agendamento', 'Agenda Cliente'],
     cliente: ['Cliente', 'Destinatário', 'Destinatario', 'Razão Social', 'Razao Social'],
