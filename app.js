@@ -58,7 +58,7 @@ const STATE = {
   lastUpdated: null, nextRefreshAt: null, activeTab: 'general', selectedRegion: 'all', selectedMapUf: '', selectedMapCity: '', selectedMapCityUf: '', mapStatus: 'all', weather: {},
   brazilGeoJson: null, brazilGeoLoading: false, brazilGeoError: '', mapZoom: 1, mapPanX: 0, mapPanY: 0, mapDragging: false, mapDragStart: null, mapTransitionTimer: null, mapClickTimer: null, tableSorts: {},
   monitorMemory: { totalRequests: 0, topics: {}, lastQuestions: [], insights: [] }, monitorLastSignature: '', occurrenceDetailRows: [], occurrenceDetailLabel: '',
-  chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicChartType: 'bars', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
+  chartPreviewRows: [], chartPreviewLabel: '', chartPreviewContext: '', compactMode: false, returnFilter: null, dynamicMetricA: 'status', dynamicMetricB: 'uf', dynamicChartType: 'bars', dynamicFiltersA: new Set(), dynamicFiltersB: new Set(),
   filters: { from: '', to: '', month: 'all', source: 'Filial BA', uf: 'all', status: 'all', search: '' }
 };
 const DOM = {};
@@ -68,6 +68,7 @@ let gvizInstalled = false;
 let loadSequence = 0;
 let autoRefreshTimer = null;
 let countdownTimer = null;
+let returnFilterTimer = null;
 let tooltipFrame = null;
 let tooltipTarget = null;
 let tooltipEvent = null;
@@ -130,6 +131,12 @@ function bindEvents() {
     const action = event.target.closest('[data-action]'); if (action) handleAction(action.dataset.action, action.dataset.value, action);
   });
   document.body.addEventListener('dblclick', (event) => {
+    const dblAction = event.target.closest('[data-dbl-action]');
+    if (dblAction) {
+      event.preventDefault();
+      cancelReturnFilterClick();
+      if (dblAction.dataset.dblAction === 'chartPreview') return openChartPreview(dblAction.dataset.dblValue || dblAction.dataset.value || '');
+    }
     const detail = event.target.closest('[data-map-detail]');
     if (!detail) return;
     event.preventDefault();
@@ -879,7 +886,7 @@ function onFilterChange() {
   DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === STATE.filters.source));
   applyFiltersAndRender();
 }
-function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
+function clearFilters() { DOM.filterFrom.value = ''; DOM.filterTo.value = ''; DOM.filterMonth.value = 'all'; DOM.filterSource.value = CONFIG.sources[0].short; DOM.filterUf.value = 'all'; DOM.filterStatus.value = 'all'; DOM.filterSearch.value = ''; STATE.returnFilter = null; DOM.sourceTabs.forEach((button) => button.classList.toggle('active', button.dataset.source === DOM.filterSource.value)); onFilterChange(); }
 function applyFiltersAndRender() { STATE.filtered = STATE.records.filter((row) => matchesFilters(row, STATE.filters)); renderAll(); }
 function matchesFilters(row, filters) {
   if (filters.source !== 'all' && row.source !== filters.source) return false; if (filters.uf !== 'all' && row.uf !== filters.uf) return false;
@@ -1277,22 +1284,83 @@ function renderOccurrences() {
 }
 
 function renderReturns() {
-  const rows = STATE.filtered.filter((row) => row.hasReturn);
+  const baseRows = STATE.filtered.filter((row) => row.hasReturn);
+  const rows = filterReturnRows(baseRows);
   const byType = countBy(rows.filter((row) => row.returnType === 'Total' || row.returnType === 'Parcial'), (row) => row.returnType);
-  const byReason = countBy(rows, (row) => cleanLabel(row.returnReason) || 'Sem motivo informado');
-  const byRegion = countBy(rows, (row) => row.region || 'Sem região'), byDriver = countBy(rows, (row) => cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa');
+  const byReason = countBy(rows, (row) => returnChartValue(row, 'returnReasons'));
+  const byRegion = countBy(rows, (row) => returnChartValue(row, 'returnRegions')), byDriver = countBy(rows, (row) => returnChartValue(row, 'returnDrivers'));
+  renderReturnFilterChips(rows, baseRows);
   document.getElementById('returnKpis').innerHTML = [
-    kpiCard('Total de devoluções', formatInteger(rows.length), `${percent(rows.length, STATE.filtered.length)} da seleção`, '↩️', 'purple', 'return'),
+    kpiCard('Total de devoluções', formatInteger(rows.length), `${percent(rows.length, STATE.filtered.length)} da seleção${STATE.returnFilter ? ` • filtro: ${returnFilterLabel(STATE.returnFilter)}` : ''}`, '↩️', 'purple', 'return'),
     kpiCard('Devolução parcial', formatInteger(rows.filter((row) => row.returnType === 'Parcial').length), 'Tipo fiel: Parcial', '½', 'info'),
     kpiCard('Devolução total', formatInteger(rows.filter((row) => row.returnType === 'Total').length), 'Tipo fiel: Total', '1', 'warn'),
     kpiCard('Com observações', formatInteger(rows.filter((row) => isPresent(row.observacao)).length), 'Notas com OBS para análise', '📝', 'success')
   ].join('');
-  renderBarList('returnTypes', topEntries(byType, 2), { empty: 'Sem tipo Total/Parcial informado.', colorResolver: () => 'purple' });
-  renderBarList('returnReasons', topEntries(byReason, 10), { empty: 'Sem motivos de devolução.', colorResolver: () => 'warn' });
-  renderBarList('returnRegions', topEntries(byRegion, 10), { empty: 'Sem devoluções por região.', colorResolver: () => 'danger', actionResolver: (label) => ({ action: 'region', value: label }) });
-  renderBarList('returnDrivers', topEntries(byDriver, 12), { empty: 'Sem motoristas/placas com devolução.', colorResolver: () => 'info' });
+  renderBarList('returnTypes', topEntries(byType, 2), returnBarOptions('returnTypes', 'Sem tipo Total/Parcial informado.', 'purple'));
+  renderBarList('returnReasons', topEntries(byReason, 10), returnBarOptions('returnReasons', 'Sem motivos de devolução.', 'warn'));
+  renderBarList('returnRegions', topEntries(byRegion, 10), returnBarOptions('returnRegions', 'Sem devoluções por região.', 'danger'));
+  renderBarList('returnDrivers', topEntries(byDriver, 12), returnBarOptions('returnDrivers', 'Sem motoristas/placas com devolução.', 'info'));
   renderInsights('returnInsights', buildReturnInsights(rows));
   renderRecordsTable('returnTable', rows, { limit: 300, empty: 'Nenhuma devolução registrada nos filtros.' });
+}
+
+function returnChartValue(row, chartId) {
+  if (chartId === 'returnTypes') return row.returnType || 'Sem tipo';
+  if (chartId === 'returnReasons') return cleanLabel(row.returnReason) || 'Sem motivo informado';
+  if (chartId === 'returnRegions') return row.region || 'Sem região';
+  if (chartId === 'returnDrivers') return cleanLabel(row.motorista || row.placa) || 'Sem motorista/placa';
+  return '';
+}
+function returnChartTitle(chartId) {
+  const titles = { returnTypes: 'Tipo de devolução', returnReasons: 'Motivo de devolução', returnRegions: 'Região', returnDrivers: 'Motorista/placa' };
+  return titles[chartId] || 'Devoluções';
+}
+function returnFilterLabel(filter = STATE.returnFilter) { return filter ? `${returnChartTitle(filter.chart)}: ${filter.label}` : ''; }
+function returnFilterMatches(row, filter = STATE.returnFilter) {
+  if (!filter) return true;
+  return row.hasReturn && normalizeText(returnChartValue(row, filter.chart)) === normalizeText(filter.label);
+}
+function filterReturnRows(rows) { return STATE.returnFilter ? rows.filter((row) => returnFilterMatches(row)) : rows; }
+function returnBarOptions(chartId, empty, color) {
+  return {
+    empty,
+    colorResolver: () => color,
+    actionResolver: (label) => ({ action: 'returnFilter', value: `${chartId}|||${label}` }),
+    detailResolver: (label) => ({ action: 'chartPreview', value: `${chartId}|||${label}` }),
+    activeResolver: (label) => STATE.returnFilter && STATE.returnFilter.chart === chartId && normalizeText(STATE.returnFilter.label) === normalizeText(label),
+    summaryResolver: (label, number, width, measure) => `<strong>${escapeHtml(label)}</strong><br>${formatInteger(number)} devolução(ões)<br><small>${width}% da maior categoria exibida</small><br><small>Contabilização: ${escapeHtml(measure)}</small><br><small>Clique 1 vez para filtrar a aba. Clique 2 vezes para abrir a base completa.</small>`
+  };
+}
+function renderReturnFilterChips(rows, baseRows) {
+  const container = document.getElementById('returnFilterChips');
+  if (!container) return;
+  if (!STATE.returnFilter) {
+    container.innerHTML = '<span class="dynamic-filter-note">Clique uma vez nos gráficos para filtrar; clique duas vezes para abrir os detalhes completos.</span>';
+    return;
+  }
+  const label = returnFilterLabel();
+  container.innerHTML = `<button type="button" class="dynamic-filter-chip active" data-action="clearReturnFilter" data-summary="${escapeHtml(`<strong>Filtro ativo</strong><br>${label}<br>${formatInteger(rows.length)} de ${formatInteger(baseRows.length)} devolução(ões).<br><small>Clique para limpar o filtro.</small>`)}">${escapeHtml(label)} ×</button><span class="dynamic-filter-note">${formatInteger(rows.length)} de ${formatInteger(baseRows.length)} devolução(ões)</span>`;
+}
+function scheduleReturnFilter(value) {
+  cancelReturnFilterClick();
+  returnFilterTimer = window.setTimeout(() => {
+    returnFilterTimer = null;
+    toggleReturnFilter(value);
+  }, 240);
+}
+function cancelReturnFilterClick() {
+  if (returnFilterTimer) {
+    window.clearTimeout(returnFilterTimer);
+    returnFilterTimer = null;
+  }
+}
+function toggleReturnFilter(value) {
+  const [chart = '', label = ''] = String(value || '').split('|||');
+  if (!chart) return;
+  const current = STATE.returnFilter;
+  STATE.returnFilter = current && current.chart === chart && normalizeText(current.label) === normalizeText(label) ? null : { chart, label };
+  if (STATE.activeTab !== 'returns') activateTab('returns');
+  else renderReturns();
 }
 
 function renderExtras() {
@@ -2304,9 +2372,12 @@ function renderBarList(containerId, data, options = {}) {
     const width = Math.max(3, Math.round((number / max) * 100));
     const cls = options.colorResolver ? options.colorResolver(label, number) : '';
     const action = options.actionResolver ? options.actionResolver(label, number) : { action: 'chartPreview', value: `${containerId}|||${label}` };
+    const detail = options.detailResolver ? options.detailResolver(label, number) : null;
+    const active = options.activeResolver ? options.activeResolver(label, number) : false;
     const attrs = action ? `data-action="${escapeHtml(action.action)}" data-value="${escapeHtml(action.value)}"` : '';
-    const summary = `<strong>${escapeHtml(label)}</strong><br>${formatInteger(number)} registro(s)<br><small>${width}% da maior categoria exibida</small><br><small>Contabilização: ${escapeHtml(measure)}</small>`;
-    return `<div class="bar-row ${action ? 'clickable' : ''}" ${attrs} data-summary="${escapeHtml(summary)}"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill ${escapeHtml(cls)}" style="width:${width}%"></div></div><div class="bar-value">${formatInteger(number)}</div></div>`;
+    const detailAttrs = detail ? `data-dbl-action="${escapeHtml(detail.action)}" data-dbl-value="${escapeHtml(detail.value)}"` : '';
+    const summary = options.summaryResolver ? options.summaryResolver(label, number, width, measure) : `<strong>${escapeHtml(label)}</strong><br>${formatInteger(number)} registro(s)<br><small>${width}% da maior categoria exibida</small><br><small>Contabilização: ${escapeHtml(measure)}</small>`;
+    return `<div class="bar-row ${action ? 'clickable' : ''} ${active ? 'active-filter' : ''}" ${attrs} ${detailAttrs} data-summary="${escapeHtml(summary)}"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill ${escapeHtml(cls)}" style="width:${width}%"></div></div><div class="bar-value">${formatInteger(number)}</div></div>`;
   }).join('');
 }
 function renderTagCloud(containerId, entries, options = {}) {
@@ -2403,6 +2474,8 @@ function handleAction(action, value, element = null) {
   if (action === 'dynamicAxis') return setDynamicAxis(element?.dataset.axis || 'a', value);
   if (action === 'dynamicChartType') return setDynamicChartType(value);
   if (action === 'dynamicQuickFilter') return toggleDynamicQuickFilter(element?.dataset.axis || 'a', value);
+  if (action === 'returnFilter') return scheduleReturnFilter(value);
+  if (action === 'clearReturnFilter') { cancelReturnFilterClick(); STATE.returnFilter = null; return renderReturns(); }
   if (action === 'chartPreview') return openChartPreview(value);
   if (action === 'occurrenceDescription') openOccurrenceDescriptionDetail(value);
   if (action === 'mapCity') { const [city = '', uf = ''] = String(value || '').split('|||'); scheduleMapSingleClick(() => focusMapCity(city, uf)); }
