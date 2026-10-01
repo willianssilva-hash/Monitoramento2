@@ -966,8 +966,7 @@ function renderScheduleCards() {
     const label = days <= 0 ? 'Hoje' : `D+${days}`;
     const summary = `<strong>${escapeHtml(label)} • ${escapeHtml(formatDate(date))}</strong><br>${escapeHtml(row.of || row.notaFiscal || 'Carga')} • ${escapeHtml(row.cliente || '-')}<br>${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}<br>${escapeHtml(row.placa || row.motorista || '')}`;
     return `<article class="schedule-card ${urgency}" data-open-record="${escapeHtml(row.id)}" data-summary="${escapeHtml(summary)}">
-      <span class="schedule-pill">${escapeHtml(label)}</span>
-      <strong>${escapeHtml(row.of || row.notaFiscal || 'Carga')}</strong>
+      <div class="schedule-card-head"><strong>${escapeHtml(row.of || row.notaFiscal || 'Carga')}</strong><span class="schedule-pill">${escapeHtml(label)}</span></div>
       <small>${escapeHtml(formatDate(date))} • ${escapeHtml([row.cidade, row.uf].filter(Boolean).join(' / ') || '-')}</small>
       <p>${escapeHtml(truncate(row.cliente || '-', 46))}</p>
     </article>`;
