@@ -796,7 +796,26 @@ function isDetailedOccurrenceLabel(value) {
 }
 function occurrenceTypeLabel(row) {
   const detailed = [row.occurrenceType, row.occurrenceDescription].map(cleanLabel).find(isDetailedOccurrenceLabel);
-  return simplifyDescription(detailed || 'Ocorrência informada sem tipo detalhado');
+  return canonicalOccurrenceLabel(detailed || 'Ocorrência informada sem tipo detalhado');
+}
+function canonicalOccurrenceLabel(value) {
+  const text = cleanLabel(value) || 'Ocorrência informada sem tipo detalhado';
+  return simplifyDescription(formatCaseInsensitiveLabel(text));
+}
+function formatCaseInsensitiveLabel(value) {
+  const clean = cleanLabel(value).replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const smallWords = new Set(['a', 'as', 'o', 'os', 'e', 'em', 'de', 'da', 'das', 'do', 'dos', 'no', 'na', 'nos', 'nas', 'por', 'para', 'com', 'sem', 'ao', 'aos']);
+  const acronyms = new Set(['cd', 'cte', 'ctrc', 'nf', 'nfe', 'sac']);
+  let wordIndex = 0;
+  return clean.toLocaleLowerCase('pt-BR').replace(/[a-zà-ÿ]+/g, (word) => {
+    const normalized = normalizeText(word);
+    const index = wordIndex;
+    wordIndex += 1;
+    if (acronyms.has(normalized)) return word.toLocaleUpperCase('pt-BR');
+    if (index > 0 && smallWords.has(normalized)) return word;
+    return word.charAt(0).toLocaleUpperCase('pt-BR') + word.slice(1);
+  });
 }
 function getReturnText(row) { return [row.devolucao, row.tipoDevolucao, row.returnReason].filter(Boolean).join(' • '); }
 function extractReturnReason(record, row) {
