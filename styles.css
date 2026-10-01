@@ -383,6 +383,44 @@ h1 {
   align-self: center;
 }
 
+.refresh-progress {
+  grid-column: 1 / -1;
+  position: relative;
+  display: block;
+  height: 4px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  opacity: 0;
+  transform: scaleX(.96);
+  transform-origin: left center;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.refresh-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 44%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--blue), var(--green), transparent);
+  animation: refreshProgress 1.05s ease-in-out infinite;
+}
+
+.update-status.loading .refresh-progress {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.update-status.loading {
+  border-color: color-mix(in srgb, var(--blue) 34%, var(--line));
+}
+
+@keyframes refreshProgress {
+  0% { transform: translateX(-115%); }
+  100% { transform: translateX(265%); }
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

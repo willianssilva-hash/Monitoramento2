@@ -83,7 +83,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function cacheDom() {
-  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','dynamicInfoControls','dynamicInfoPanel','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','mapFocusTitle','mapFocusSub','mapScopeBadge','mapStateBreakdown','mapCityBreakdown','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
+  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','updateStatus','refreshProgress','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','dynamicInfoControls','dynamicInfoPanel','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','mapFocusTitle','mapFocusSub','mapScopeBadge','mapStateBreakdown','mapCityBreakdown','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
@@ -879,7 +879,22 @@ function renderActiveTab() {
   renderer();
 }
 function updateHeaderStatus() { const count = STATE.filtered.length; DOM.filterCounter.textContent = `${formatInteger(count)} registro${count === 1 ? '' : 's'} nos filtros`; if (STATE.lastUpdated) DOM.lastUpdate.textContent = `Atualizado às ${formatTime(STATE.lastUpdated)}`; }
-function setLoadStatus(status, message) { DOM.loadDot.classList.remove('loading', 'error'); if (status === 'loading') DOM.loadDot.classList.add('loading'); if (status === 'error') DOM.loadDot.classList.add('error'); DOM.lastUpdate.textContent = status === 'ok' && STATE.lastUpdated ? `${message} às ${formatTime(STATE.lastUpdated)}` : message; updateCountdown(); }
+function setLoadStatus(status, message) {
+  const isLoading = status === 'loading';
+  if (DOM.loadDot) {
+    DOM.loadDot.classList.remove('loading', 'error');
+    if (isLoading) DOM.loadDot.classList.add('loading');
+    if (status === 'error') DOM.loadDot.classList.add('error');
+  }
+  if (DOM.updateStatus) {
+    DOM.updateStatus.classList.toggle('loading', isLoading);
+    DOM.updateStatus.classList.toggle('error', status === 'error');
+    DOM.updateStatus.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  }
+  if (DOM.refreshProgress) DOM.refreshProgress.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
+  DOM.lastUpdate.textContent = status === 'ok' && STATE.lastUpdated ? `${message} às ${formatTime(STATE.lastUpdated)}` : message;
+  updateCountdown();
+}
 function updateCountdown() { if (!STATE.nextRefreshAt) { DOM.nextUpdate.textContent = 'próxima: --:--'; return; } const remaining = Math.max(0, STATE.nextRefreshAt.getTime() - Date.now()); const minutes = Math.floor(remaining / 60000); const seconds = Math.floor((remaining % 60000) / 1000); DOM.nextUpdate.textContent = `próxima: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`; }
 function showBanner(message, type = 'warn') { if (!message) { DOM.alertBanner.classList.add('hidden'); DOM.alertBanner.textContent = ''; return; } DOM.alertBanner.classList.remove('hidden'); DOM.alertBanner.textContent = message; DOM.alertBanner.style.borderColor = type === 'error' ? 'rgba(230,46,45,.35)' : 'rgba(255,176,32,.26)'; DOM.alertBanner.style.background = type === 'error' ? 'rgba(230,46,45,.10)' : 'rgba(255,176,32,.10)'; DOM.alertBanner.style.color = type === 'error' ? '#ffd3d0' : '#ffe6b0'; }
 

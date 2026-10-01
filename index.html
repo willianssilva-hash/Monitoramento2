@@ -60,10 +60,11 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <div class="update-status" title="Status da última atualização">
+          <div class="update-status" id="updateStatus" title="Status da última atualização" aria-live="polite" aria-busy="false">
             <span class="status-dot" id="loadDot"></span>
             <span id="lastUpdate">Aguardando dados...</span>
             <small id="nextUpdate">próxima: --:--</small>
+            <span class="refresh-progress" id="refreshProgress" aria-hidden="true"><span></span></span>
           </div>
           <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema">☾ Tema escuro</button>
           <button class="btn" id="compactToggle" type="button" aria-pressed="false">Compactar Informações</button>
