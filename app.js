@@ -69,13 +69,15 @@ let loadSequence = 0;
 let autoRefreshTimer = null;
 let countdownTimer = null;
 let returnFilterTimer = null;
+let workspaceActiveSector = 'all';
+let workspaceActiveScope = 'all';
 let tooltipFrame = null;
 let tooltipTarget = null;
 let tooltipEvent = null;
 const STATUS_CLASS = { 'Fora do prazo': 'danger', Finalizado: 'success', 'Aguard. descarga': 'warn', 'Ag Descarga': 'warn', 'Em trânsito': 'info', 'Em transito no prazo': 'info', 'Em transito fora do prazo': 'danger', 'Em doca': 'purple', Descarregando: 'warn', Devolvido: 'purple', 'Aguardando liberação': 'warn', 'Em aberto': 'purple', Faturado: 'purple' };
 
 window.addEventListener('DOMContentLoaded', () => {
-  cacheDom(); initTheme(); initPalette(); initCompactMode(); loadMonitorMemory(); bindEvents(); installGvizFallback(); populateSourceFilter();
+  cacheDom(); initTheme(); initPalette(); initCompactMode(); initWorkspace(); loadMonitorMemory(); bindEvents(); installGvizFallback(); populateSourceFilter();
   addAiMessage('Olá! Sou o Monitor IA. Vou acompanhar as planilhas da Filial BA e Matriz SP a cada 15 minutos. Posso explicar como usar cada aba, sugerir ações para dúvidas operacionais e gerar relatórios XLSX com os campos que você pedir, por exemplo: OF, Nota Fiscal, Motorista, previsão de entrega e status.');
   loadData({ manual: false });
   loadBrazilGeoJson();
@@ -84,16 +86,30 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function cacheDom() {
-  ['refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','updateStatus','refreshProgress','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','dynamicInfoControls','dynamicInfoPanel','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','mapFocusTitle','mapFocusSub','mapScopeBadge','mapStateBreakdown','mapCityBreakdown','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
+  ['workspaceShell','workspaceHomeBtn','workspaceBackBtn','workspaceGreeting','workspaceSummary','workspaceThemeToggle','workspaceSearch','workspaceEmpty','workspaceTorreCount','workspaceDataStatus','refreshBtn','themeToggle','compactToggle','colorPalette','lastUpdate','nextUpdate','loadDot','updateStatus','refreshProgress','alertBanner','filterFrom','filterTo','filterMonth','filterSource','filterUf','filterStatus','filterSearch','filterCounter','clearFiltersBtn','exportCsvBtn','exportReportBtn','exportDynamicReportBtn','dynamicTypeGroupA','dynamicTypeGroupB','dynamicSuggestion','dynamicChartTypeGroup','dynamicFilterChips','dynamicInfoChart','dynamicInfoInsights','dynamicInfoControls','dynamicInfoPanel','exportReportDialog','exportReportClose','exportReportPdfBtn','exportReportXlsxBtn','chartPreviewModal','chartPreviewClose','chartPreviewExport','chartPreviewPrint','chartPreviewTitle','chartPreviewBody','occurrenceDetailModal','occurrenceDetailClose','occurrenceDetailExport','occurrenceDetailPrint','occurrenceDetailTitle','occurrenceDetailBody','monitorMessages','monitorForm','monitorInput','detailModal','modalClose','modalTitle','modalBody','tooltip','mapRegionFilter','mapStatusFilter','applyMapRegionGlobal','mapFocusTitle','mapFocusSub','mapScopeBadge','mapStateBreakdown','mapCityBreakdown','aiFab','brazilMap','mapZoomIn','mapZoomOut','mapZoomReset','mapZoomLevel']
     .forEach((id) => { DOM[id] = document.getElementById(id); });
   DOM.navTabs = Array.from(document.querySelectorAll('.nav-tab'));
   DOM.sourceTabs = Array.from(document.querySelectorAll('.unit-tab'));
   DOM.panels = Array.from(document.querySelectorAll('[data-tab-panel]'));
+  DOM.workspaceOpenButtons = Array.from(document.querySelectorAll('[data-open-workspace-panel]'));
+  DOM.workspaceSectorButtons = Array.from(document.querySelectorAll('[data-workspace-sector-filter]'));
+  DOM.workspaceScopeButtons = Array.from(document.querySelectorAll('[data-workspace-scope]'));
+  DOM.workspacePanelItems = Array.from(document.querySelectorAll('[data-workspace-panel-item]'));
+  DOM.workspaceSectorGroups = Array.from(document.querySelectorAll('[data-workspace-sector-group]'));
 }
+
 
 function bindEvents() {
   DOM.navTabs.forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   DOM.sourceTabs.forEach((button) => button.addEventListener('click', () => selectSourceTab(button.dataset.source)));
+  DOM.workspaceOpenButtons.forEach((button) => button.addEventListener('click', () => openWorkspacePanel(button.dataset.openWorkspacePanel || 'torre')));
+  DOM.workspaceSectorButtons.forEach((button) => button.addEventListener('click', () => selectWorkspaceSector(button.dataset.workspaceSectorFilter || 'all')));
+  DOM.workspaceScopeButtons.forEach((button) => button.addEventListener('click', () => selectWorkspaceScope(button.dataset.workspaceScope || 'all')));
+  if (DOM.workspaceBackBtn) DOM.workspaceBackBtn.addEventListener('click', () => showWorkspaceHome());
+  if (DOM.workspaceThemeToggle) DOM.workspaceThemeToggle.addEventListener('click', toggleTheme);
+  if (DOM.workspaceSearch) DOM.workspaceSearch.addEventListener('input', debounce(filterWorkspacePanels, 120));
+  window.addEventListener('hashchange', handleWorkspaceRoute);
+  window.addEventListener('popstate', handleWorkspaceRoute);
   DOM.refreshBtn.addEventListener('click', () => loadData({ manual: true }));
   if (DOM.themeToggle) DOM.themeToggle.addEventListener('click', toggleTheme);
   if (DOM.compactToggle) DOM.compactToggle.addEventListener('click', toggleCompactMode);
@@ -161,6 +177,137 @@ function activateTab(tab) {
   renderActiveTab();
 }
 
+function initWorkspace() {
+  updateWorkspaceGreeting();
+  workspaceActiveSector = 'all';
+  workspaceActiveScope = 'all';
+  filterWorkspacePanels();
+  handleWorkspaceRoute({ initial: true });
+}
+
+function handleWorkspaceRoute() {
+  const hash = normalizeText(window.location.hash.replace('#', ''));
+  const params = new URLSearchParams(window.location.search);
+  const requested = normalizeText(params.get('panel') || params.get('painel') || params.get('view') || '');
+  if (['torre', 'torre controle', 'torre de controle', 'monitoramento'].includes(hash) || ['torre', 'torre controle', 'torre de controle', 'monitoramento'].includes(requested)) {
+    openWorkspacePanel('torre', { silent: true });
+  } else if (!hash || hash === 'inicio' || hash === 'home') {
+    showWorkspaceHome({ silent: true });
+  }
+}
+
+function updateWorkspaceGreeting() {
+  if (!DOM.workspaceGreeting) return;
+  const now = new Date();
+  const week = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  DOM.workspaceGreeting.textContent = `${greeting}, Willians`;
+  DOM.workspaceGreeting.setAttribute('title', `Hoje é ${week[now.getDay()]}`);
+}
+
+function openWorkspacePanel(panel = 'torre', options = {}) {
+  const selected = normalizeText(panel || 'torre');
+  if (!['torre', 'torre controle', 'torre de controle', 'monitoramento'].includes(selected)) return;
+  document.body.classList.remove('workspace-home');
+  document.body.classList.add('workspace-panel');
+  if (DOM.workspaceShell) DOM.workspaceShell.setAttribute('aria-hidden', 'true');
+  const appShell = document.querySelector('.app-shell');
+  if (appShell) appShell.setAttribute('aria-hidden', 'false');
+  document.title = 'Torre de Controle - Monitoramento';
+  if (!options.silent && window.location.hash !== '#torre') {
+    const url = new URL(window.location.href);
+    url.hash = 'torre';
+    window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+  window.scrollTo({ top: 0, behavior: options.silent ? 'auto' : 'smooth' });
+}
+
+function showWorkspaceHome(options = {}) {
+  document.body.classList.add('workspace-home');
+  document.body.classList.remove('workspace-panel', 'ai-floating-open');
+  if (!options.keepFilter) {
+    workspaceActiveSector = 'all';
+    workspaceActiveScope = 'all';
+    DOM.workspaceSectorButtons.forEach((button) => button.classList.toggle('active', (button.dataset.workspaceSectorFilter || 'all') === 'all'));
+    DOM.workspaceScopeButtons.forEach((button) => button.classList.toggle('active', (button.dataset.workspaceScope || 'all') === 'all'));
+    filterWorkspacePanels();
+  }
+  if (DOM.workspaceShell) DOM.workspaceShell.setAttribute('aria-hidden', 'false');
+  const appShell = document.querySelector('.app-shell');
+  if (appShell) appShell.setAttribute('aria-hidden', 'true');
+  document.title = 'ColorBI - Área de Trabalho';
+  updateWorkspaceGreeting();
+  if (!options.silent) {
+    const url = new URL(window.location.href);
+    url.hash = '';
+    url.searchParams.delete('panel');
+    url.searchParams.delete('painel');
+    url.searchParams.delete('view');
+    window.history.pushState(null, '', `${url.pathname}${url.search}`);
+  }
+  window.scrollTo({ top: 0, behavior: options.silent ? 'auto' : 'smooth' });
+}
+
+function selectWorkspaceSector(sector = 'all') {
+  workspaceActiveSector = sector || 'all';
+  DOM.workspaceSectorButtons.forEach((button) => button.classList.toggle('active', (button.dataset.workspaceSectorFilter || 'all') === workspaceActiveSector));
+  filterWorkspacePanels();
+}
+
+function selectWorkspaceScope(scope = 'all') {
+  workspaceActiveScope = scope || 'all';
+  DOM.workspaceScopeButtons.forEach((button) => button.classList.toggle('active', (button.dataset.workspaceScope || 'all') === workspaceActiveScope));
+  filterWorkspacePanels();
+}
+
+function filterWorkspacePanels() {
+  const term = normalizeText(DOM.workspaceSearch?.value || '');
+  let visiblePanels = 0;
+  let availablePanels = 0;
+  DOM.workspacePanelItems.forEach((item) => {
+    const sector = item.dataset.sector || 'all';
+    const favorite = item.dataset.favorite === 'true';
+    const available = item.dataset.available === 'true';
+    const text = normalizeText(`${item.dataset.search || ''} ${item.textContent || ''}`);
+    const sectorOk = workspaceActiveSector === 'all' || sector === workspaceActiveSector;
+    const scopeOk = workspaceActiveScope !== 'favorites' || favorite;
+    const termOk = !term || text.includes(term);
+    const visible = sectorOk && scopeOk && termOk;
+    item.hidden = !visible;
+    if (visible) visiblePanels += 1;
+    if (visible && available) availablePanels += 1;
+  });
+  DOM.workspaceSectorGroups.forEach((group) => {
+    const hasVisibleItem = Array.from(group.querySelectorAll('[data-workspace-panel-item]')).some((item) => !item.hidden);
+    const sector = group.dataset.workspaceSectorGroup || 'all';
+    group.hidden = !hasVisibleItem || (workspaceActiveSector !== 'all' && sector !== workspaceActiveSector);
+  });
+  if (DOM.workspaceEmpty) DOM.workspaceEmpty.hidden = visiblePanels > 0;
+  if (DOM.workspaceSummary) {
+    const sectorLabel = workspaceActiveSector === 'all' ? 'todos os setores' : `setor ${workspaceActiveSector}`;
+    const availableText = `${availablePanels || 0} painel${availablePanels === 1 ? '' : 'éis'} disponível${availablePanels === 1 ? '' : 'is'}`;
+    DOM.workspaceSummary.textContent = term
+      ? `${availableText} encontrado${availablePanels === 1 ? '' : 's'} para a busca atual.`
+      : `${availableText} em ${sectorLabel}. A estrutura está pronta para incluir novos controles.`;
+  }
+}
+
+function updateWorkspaceDataSummary(message = '', status = '') {
+  if (DOM.workspaceTorreCount) {
+    DOM.workspaceTorreCount.textContent = STATE.records.length
+      ? `${formatInteger(STATE.records.length)} registros monitorados`
+      : 'Atualização a cada 15 min';
+  }
+  if (!DOM.workspaceDataStatus) return;
+  const isLoading = STATE.isLoading || status === 'loading';
+  const isError = status === 'error';
+  const text = message || (STATE.lastUpdated ? `Atualizado às ${formatTime(STATE.lastUpdated)}` : 'Aguardando dados');
+  DOM.workspaceDataStatus.textContent = text;
+  DOM.workspaceDataStatus.classList.toggle('loading', isLoading);
+  DOM.workspaceDataStatus.classList.toggle('error', isError);
+}
+
 function selectSourceTab(source) {
   const selected = source || CONFIG.sources[0].short;
   DOM.filterSource.value = selected;
@@ -180,8 +327,8 @@ function toggleTheme() {
   updateThemeButton(next);
 }
 function updateThemeButton(theme) {
-  if (!DOM.themeToggle) return;
-  DOM.themeToggle.textContent = theme === 'dark' ? '☀ Tema claro' : '☾ Tema escuro';
+  if (DOM.themeToggle) DOM.themeToggle.textContent = theme === 'dark' ? '☀ Tema claro' : '☾ Tema escuro';
+  if (DOM.workspaceThemeToggle) DOM.workspaceThemeToggle.textContent = theme === 'dark' ? '☀ Claro' : '☾ Escuro';
 }
 function initPalette() {
   const saved = localStorage.getItem('torre-palette') || 'serena';
@@ -898,7 +1045,7 @@ function matchesFilters(row, filters) {
   }
   return !(filters.search && !row.searchText.includes(normalizeText(filters.search)));
 }
-function renderAll() { updateHeaderStatus(); renderActiveTab(); renderTicker(); updateMonitorRealtimeInsights(); }
+function renderAll() { updateHeaderStatus(); updateWorkspaceDataSummary(); renderActiveTab(); renderTicker(); updateMonitorRealtimeInsights(); }
 function renderActiveTab() {
   const renderers = { general: renderGeneral, performance: renderPerformance, occurrences: renderOccurrences, returns: renderReturns, extras: renderExtras, report: renderReportBuilder, map: renderMap };
   const renderer = renderers[STATE.activeTab] || renderGeneral;
@@ -919,6 +1066,7 @@ function setLoadStatus(status, message) {
   }
   if (DOM.refreshProgress) DOM.refreshProgress.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
   DOM.lastUpdate.textContent = status === 'ok' && STATE.lastUpdated ? `${message} às ${formatTime(STATE.lastUpdated)}` : message;
+  updateWorkspaceDataSummary(status === 'ok' && STATE.lastUpdated ? `${message} às ${formatTime(STATE.lastUpdated)}` : message, status);
   updateCountdown();
 }
 function updateCountdown() { if (!STATE.nextRefreshAt) { DOM.nextUpdate.textContent = 'próxima: --:--'; return; } const remaining = Math.max(0, STATE.nextRefreshAt.getTime() - Date.now()); const minutes = Math.floor(remaining / 60000); const seconds = Math.floor((remaining % 60000) / 1000); DOM.nextUpdate.textContent = `próxima: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`; }
